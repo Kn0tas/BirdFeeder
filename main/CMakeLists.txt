@@ -1,0 +1,21 @@
+idf_component_register(
+    SRCS
+        "app_main.c"
+        "power_manager.c"
+        "sensors/pir.c"
+        "sensors/camera.c"
+        "vision/vision.c"
+        "actuators/servo.c"
+        "comms/wifi.c"
+        "comms/ota.c"
+        "storage/fram.c"
+        "logging/events.c"
+    INCLUDE_DIRS
+        "."
+        "sensors"
+        "actuators"
+        "comms"
+        "storage"
+        "logging"
+        "vision"
+)
