@@ -1,4 +1,4 @@
-#include "freertos/FreeRTOS.h"
+﻿#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_err.h"
 #include "esp_log.h"
@@ -13,6 +13,7 @@
 #include "comms/ota.h"
 #include "storage/fram.h"
 #include "logging/events.h"
+#include "max17048.h"
 
 static const char *TAG = "app_main";
 
@@ -47,12 +48,20 @@ static void handle_motion_event(void) {
 void app_main(void) {
     ESP_ERROR_CHECK(power_manager_init());
     ESP_ERROR_CHECK(fram_init());
+    ESP_ERROR_CHECK(max17048_init());
     ESP_ERROR_CHECK(pir_init());
     ESP_ERROR_CHECK(servo_init());
     ESP_ERROR_CHECK(camera_init());
     ESP_ERROR_CHECK(vision_init());
     ESP_ERROR_CHECK(wifi_init());
     ESP_ERROR_CHECK(ota_init());
+
+    max17048_reading_t fuel = {0};
+    if (max17048_read(&fuel) == ESP_OK) {
+        ESP_LOGI(TAG, "fuel gauge: %.2f%%, %.3fV", fuel.soc_percent, fuel.voltage_v);
+    } else {
+        ESP_LOGW(TAG, "fuel gauge read failed");
+    }
 
     events_log("boot");
 

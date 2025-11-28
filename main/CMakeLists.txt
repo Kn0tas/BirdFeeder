@@ -1,7 +1,8 @@
-idf_component_register(
+﻿idf_component_register(
     SRCS
         "app_main.c"
         "power_manager.c"
+        "max17048.c"
         "sensors/pir.c"
         "sensors/camera.c"
         "vision/vision.c"
