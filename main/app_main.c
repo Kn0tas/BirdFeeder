@@ -18,30 +18,14 @@
 static const char *TAG = "app_main";
 
 static void handle_motion_event(void) {
-    camera_frame_t frame = {0};
-    if (camera_capture(&frame) != ESP_OK) {
-        ESP_LOGW(TAG, "capture failed");
+    events_log("motion detected");
+    if (servo_set_lid_closed(true) != ESP_OK) {
+        ESP_LOGE(TAG, "servo close failed");
         return;
     }
-
-    vision_result_t result = {0};
-    if (vision_classify(&frame, &result) != ESP_OK) {
-        ESP_LOGW(TAG, "classification failed");
-        return;
-    }
-
-    switch (result.kind) {
-        case VISION_RESULT_SQUIRREL:
-            events_log("squirrel detected");
-            servo_set_lid_closed(true);
-            break;
-        case VISION_RESULT_BIRD:
-            events_log("bird detected");
-            servo_set_lid_closed(false);
-            break;
-        default:
-            events_log("motion detected (unknown)");
-            break;
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    if (servo_set_lid_closed(false) != ESP_OK) {
+        ESP_LOGE(TAG, "servo open failed");
     }
 }
 
@@ -63,6 +47,10 @@ void app_main(void) {
         ESP_LOGW(TAG, "fuel gauge read failed");
     }
 
+    // Start with lid open
+    if (servo_set_lid_closed(false) != ESP_OK) {
+        ESP_LOGE(TAG, "servo initial open failed");
+    }
     events_log("boot");
 
     while (true) {
@@ -70,6 +58,6 @@ void app_main(void) {
         pir_wait_for_motion(portMAX_DELAY);
         handle_motion_event();
         power_manager_prepare_sleep();
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(PIR_RETRIGGER_MS));
     }
 }
