@@ -4,7 +4,7 @@ Battery-friendly, Wi-Fi-connected bird feeder with on-device vision to keep squi
 
 ## Hardware (current)
 - ESP32-S3 DevKit N8R8
-- PIR: EKMB1103113 (being replaced; AM312 PIR ordered). Current wiring uses GPIO16 (signal), 3.3 V, GND, with pull-up enabled in firmware.
+- PIR: AM312 (signal -> GPIO16, 3.3 V, GND; internal pull-up enabled in firmware)
 - FRAM: MB85RC256V on I2C (SDA -> GPIO8, SCL -> GPIO9, A0/A1/A2/WP -> GND)
 - Fuel gauge: MAX17048 (SDA -> GPIO8, SCL -> GPIO9, VCC 3.3 V, GND common, ALRT -> GPIO5)
 - Servo: SG90 (signal -> GPIO2, powered from 5 V rail, GND common)
@@ -36,8 +36,8 @@ Battery-friendly, Wi-Fi-connected bird feeder with on-device vision to keep squi
 ## Wiring snapshot
 - I2C bus: GPIO8 (SDA), GPIO9 (SCL); FRAM @0x50, MAX17048 @0x36
 - MAX17048 ALRT: GPIO5 (optional interrupt)
-- Servo: GPIO2 (LEDC PWM); power from 5 V with common ground; add 470-1000 F bulk cap near servo supply
-- PIR: GPIO16 signal, 3.3 V, GND (AM312 on order; firmware enables pull-up). If using AM312, no pull-up needed; leave enabled or add 10 k F to 3.3 V if desired.
+- Servo: GPIO2 (LEDC PWM); power from 5 V with common ground; add 470-1000 µF bulk cap near servo supply
+- PIR: AM312 on GPIO16 (signal), 3.3 V, GND; firmware enables pull-up (AM312 outputs push-pull, so pull-up is fine)
 - Grounds: common across all devices; 3.3 V only for logic/I2C devices
 
 ## Getting started (ESP-IDF)

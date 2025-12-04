@@ -1,11 +1,14 @@
-#include "pir.h"
+﻿#include "pir.h"
 #include "esp_log.h"
 #include "board_config.h"
 #include "driver/gpio.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char *TAG = "pir";
 
 esp_err_t pir_init(void) {
+    gpio_reset_pin(PIN_PIR_SENSOR);
     gpio_config_t cfg = {
         .pin_bit_mask = 1ULL << PIN_PIR_SENSOR,
         .mode = GPIO_MODE_INPUT,
@@ -22,10 +25,32 @@ esp_err_t pir_init(void) {
 }
 
 esp_err_t pir_wait_for_motion(TickType_t timeout_ticks) {
-    // Placeholder: in future use ISR + event group to wait efficiently
-    (void)timeout_ticks;
-    vTaskDelay(pdMS_TO_TICKS(PIR_WAKE_DEBOUNCE_MS));
-    return ESP_OK;
+    const TickType_t poll_delay = pdMS_TO_TICKS(20);
+    TickType_t start = xTaskGetTickCount();
+
+    // Require low before looking for a rising edge (AM312 idle low)
+    while (gpio_get_level(PIN_PIR_SENSOR)) {
+        if (timeout_ticks != portMAX_DELAY && (xTaskGetTickCount() - start) >= timeout_ticks) {
+            return ESP_ERR_TIMEOUT;
+        }
+        vTaskDelay(poll_delay);
+    }
+
+    while (true) {
+        if (gpio_get_level(PIN_PIR_SENSOR)) {
+            TickType_t stable_start = xTaskGetTickCount();
+            while (gpio_get_level(PIN_PIR_SENSOR)) {
+                if ((xTaskGetTickCount() - stable_start) >= pdMS_TO_TICKS(PIR_WAKE_DEBOUNCE_MS)) {
+                    return ESP_OK;
+                }
+                vTaskDelay(poll_delay);
+            }
+        }
+        if (timeout_ticks != portMAX_DELAY && (xTaskGetTickCount() - start) >= timeout_ticks) {
+            return ESP_ERR_TIMEOUT;
+        }
+        vTaskDelay(poll_delay);
+    }
 }
 
 bool pir_motion_detected(void) {
