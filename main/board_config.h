@@ -12,7 +12,7 @@
 
 // Camera (OV2640)
 #define PIN_CAM_PWDN       GPIO_NUM_4
-#define PIN_CAM_RESET      GPIO_NUM_46
+#define PIN_CAM_RESET      GPIO_NUM_1   // camera reset driven by GPIO1
 #define PIN_CAM_XCLK       GPIO_NUM_10
 #define PIN_CAM_SIOD       GPIO_NUM_38
 #define PIN_CAM_SIOC       GPIO_NUM_39
