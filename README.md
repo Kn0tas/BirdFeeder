@@ -4,7 +4,12 @@ Battery-friendly, Wi-Fi-connected bird feeder with on-device vision to keep squi
 
 ## Hardware (current)
 - ESP32-S3 DevKit N8R8
-- PIR: AM312 (signal -> GPIO16, 3.3 V, GND; internal pull-up enabled in firmware)
+- PIR: AM312 (signal -> GPIO16, 3.3 V, GND)
+- Camera: OV2640 Waveshare breakout (3.3 V only)
+  - PWDN -> GPIO4, RESET -> GPIO46
+  - SIOD/SIOC -> GPIO38/39
+  - D0..D7 -> GPIO11,13,18,17,14,15,48,47
+  - VSYNC/HREF/PCLK/XCLK -> GPIO6/7/12/10
 - FRAM: MB85RC256V on I2C (SDA -> GPIO8, SCL -> GPIO9, A0/A1/A2/WP -> GND)
 - Fuel gauge: MAX17048 (SDA -> GPIO8, SCL -> GPIO9, VCC 3.3 V, GND common, ALRT -> GPIO5)
 - Servo: SG90 (signal -> GPIO2, powered from 5 V rail, GND common)
@@ -12,7 +17,6 @@ Battery-friendly, Wi-Fi-connected bird feeder with on-device vision to keep squi
 - Interim power: TPS63020 USB Auto Boost Buck Power Module (3.3 V) for prototyping
 
 ## Planned additions
-- OV2640 camera module (Waveshare breakout on the way)
 - Solar panel (6 V / 1-2 W) + BQ24074 solar charging board (hookup paused until buck arrives)
 - PCB power: TPS62740 3.3 V buck (planned for the final board)
 - MAX17048 fuel gauge integration in firmware (I2C addr 0x36)
@@ -34,10 +38,10 @@ Battery-friendly, Wi-Fi-connected bird feeder with on-device vision to keep squi
 - `scripts/`, `tests/`: reserved for tooling and tests
 
 ## Wiring snapshot
-- I2C bus: GPIO8 (SDA), GPIO9 (SCL); FRAM @0x50, MAX17048 @0x36
-- MAX17048 ALRT: GPIO5 (optional interrupt)
+- I2C bus: GPIO8 (SDA), GPIO9 (SCL); FRAM @0x50, MAX17048 @0x36; ALRT -> GPIO5
 - Servo: GPIO2 (LEDC PWM); power from 5 V with common ground; add 470-1000 µF bulk cap near servo supply
-- PIR: AM312 on GPIO16 (signal), 3.3 V, GND; firmware enables pull-up (AM312 outputs push-pull, so pull-up is fine)
+- PIR: AM312 on GPIO16 (signal), 3.3 V, GND
+- Camera (OV2640): PWDN GPIO4, RESET GPIO46, SIOD/SIOC GPIO38/39, D0..D7 GPIO11/13/18/17/14/15/48/47, VSYNC/HREF/PCLK/XCLK GPIO6/7/12/10; 3.3 V/GND
 - Grounds: common across all devices; 3.3 V only for logic/I2C devices
 
 ## Getting started (ESP-IDF)
