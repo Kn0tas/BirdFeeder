@@ -53,6 +53,16 @@ void app_main(void) {
     }
     events_log("boot");
 
+    // One-shot capture at boot for wiring validation
+    camera_frame_t frame = {0};
+    if (camera_capture(&frame) == ESP_OK) {
+        ESP_LOGI(TAG, "boot capture %dx%d (%u bytes, jpeg=%d)", frame.width, frame.height, (unsigned)frame.size, frame.is_jpeg);
+        camera_dump_base64(&frame);
+        camera_frame_return(&frame);
+    } else {
+        ESP_LOGW(TAG, "boot capture failed");
+    }
+
     while (true) {
         ESP_LOGI(TAG, "waiting for PIR motion");
         pir_wait_for_motion(portMAX_DELAY);

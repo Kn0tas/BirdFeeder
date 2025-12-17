@@ -19,14 +19,15 @@
 #define PIN_CAM_VSYNC      GPIO_NUM_6
 #define PIN_CAM_HREF       GPIO_NUM_7
 #define PIN_CAM_PCLK       GPIO_NUM_12
-#define PIN_CAM_D0         GPIO_NUM_11
-#define PIN_CAM_D1         GPIO_NUM_13
-#define PIN_CAM_D2         GPIO_NUM_18
-#define PIN_CAM_D3         GPIO_NUM_17
-#define PIN_CAM_D4         GPIO_NUM_14
-#define PIN_CAM_D5         GPIO_NUM_15
-#define PIN_CAM_D6         GPIO_NUM_48
-#define PIN_CAM_D7         GPIO_NUM_47
+// Data lines labeled D2-D9 on the breakout
+#define PIN_CAM_D2         GPIO_NUM_11
+#define PIN_CAM_D3         GPIO_NUM_13
+#define PIN_CAM_D4         GPIO_NUM_18
+#define PIN_CAM_D5         GPIO_NUM_17
+#define PIN_CAM_D6         GPIO_NUM_14
+#define PIN_CAM_D7         GPIO_NUM_15
+#define PIN_CAM_D8         GPIO_NUM_48
+#define PIN_CAM_D9         GPIO_NUM_47
 
 #define I2C_PORT I2C_NUM_0
 #define I2C_CLK_HZ 400000

@@ -6,7 +6,7 @@ Battery-friendly, Wi-Fi-connected bird feeder with on-device vision to keep squi
 - ESP32-S3 DevKit N8R8
 - PIR: AM312 (signal -> GPIO16, 3.3 V, GND)
 - Camera: OV2640 Waveshare breakout (3.3 V only)
-  - PWDN -> GPIO4, RESET -> GPIO46
+  - PWDN -> GPIO4, RESET -> GPIO1 (firmware drives GPIO1; update wiring if you previously used GPIO46)
   - SIOD/SIOC -> GPIO38/39
   - D0..D7 -> GPIO11,13,18,17,14,15,48,47
   - VSYNC/HREF/PCLK/XCLK -> GPIO6/7/12/10
@@ -36,6 +36,11 @@ Battery-friendly, Wi-Fi-connected bird feeder with on-device vision to keep squi
   - `storage/`: FRAM (I2C setup) stub
   - `logging/`: event logging shim
 - `scripts/`, `tests/`: reserved for tooling and tests
+
+## Known issues / TODOs
+- Camera driver currently logs "QVGA" but is configured to capture QQVGA to save memory; adjust either the log or frame size once PSRAM is validated.
+- Camera reset pin in firmware is GPIO1; earlier notes used GPIO46. Wire RESET to GPIO1 or update `PIN_CAM_RESET` in `main/board_config.h` to match your hardware.
+- `camera.c` uses `vTaskDelay` and `pdMS_TO_TICKS` but is missing the FreeRTOS includes; add them before building.
 
 ## Wiring snapshot
 - I2C bus: GPIO8 (SDA), GPIO9 (SCL); FRAM @0x50, MAX17048 @0x36; ALRT -> GPIO5

@@ -1,4 +1,4 @@
-﻿#include "fram.h"
+#include "fram.h"
 #include "board_config.h"
 #include "esp_log.h"
 #include "driver/i2c.h"
