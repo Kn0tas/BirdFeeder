@@ -58,10 +58,10 @@ esp_err_t camera_init(void) {
 
         .pixel_format = PIXFORMAT_JPEG,
         .frame_size = FRAMESIZE_QQVGA, // smaller to fit DRAM if PSRAM fails
-        .jpeg_quality = 12,
-        .fb_count = 1,
+        .jpeg_quality = 20,            // lighter compression workload
+        .fb_count = 3,                 // triple buffer to reduce overrun/NO-SOI warnings
         .fb_location = CAMERA_FB_IN_DRAM,
-        .grab_mode = CAMERA_GRAB_WHEN_EMPTY,
+        .grab_mode = CAMERA_GRAB_LATEST, // drop stale frames if consumer is slower
     };
 
     esp_err_t err = esp_camera_init(&cfg);
@@ -70,7 +70,7 @@ esp_err_t camera_init(void) {
         return err;
     }
     s_inited = true;
-    ESP_LOGI(TAG, "camera ready (QVGA/JPEG)");
+    ESP_LOGI(TAG, "camera ready (QQVGA/JPEG)");
     return ESP_OK;
 }
 

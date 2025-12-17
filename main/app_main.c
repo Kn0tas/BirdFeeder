@@ -27,6 +27,15 @@ static void handle_motion_event(void) {
     if (servo_set_lid_closed(false) != ESP_OK) {
         ESP_LOGE(TAG, "servo open failed");
     }
+
+    // Capture a frame on motion for validation/telemetry
+    camera_frame_t frame = {0};
+    if (camera_capture(&frame) == ESP_OK) {
+        ESP_LOGI(TAG, "motion capture %dx%d (%u bytes, jpeg=%d)", frame.width, frame.height, (unsigned)frame.size, frame.is_jpeg);
+        camera_frame_return(&frame);
+    } else {
+        ESP_LOGW(TAG, "motion capture failed");
+    }
 }
 
 void app_main(void) {
@@ -53,11 +62,11 @@ void app_main(void) {
     }
     events_log("boot");
 
-    // One-shot capture at boot for wiring validation
+    // One-shot capture at boot for wiring validation (no base64 dump to reduce load)
+    vTaskDelay(pdMS_TO_TICKS(200));  // allow sensor to settle
     camera_frame_t frame = {0};
     if (camera_capture(&frame) == ESP_OK) {
         ESP_LOGI(TAG, "boot capture %dx%d (%u bytes, jpeg=%d)", frame.width, frame.height, (unsigned)frame.size, frame.is_jpeg);
-        camera_dump_base64(&frame);
         camera_frame_return(&frame);
     } else {
         ESP_LOGW(TAG, "boot capture failed");
