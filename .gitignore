@@ -3,7 +3,7 @@
 /sdkconfig.old
 /.vscode/
 /.idea/
-/.managed_components/
+/managed_components/
 dependencies.lock
 *.pyc
 __pycache__/
