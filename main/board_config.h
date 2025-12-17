@@ -10,6 +10,25 @@
 #define PIN_SERVO          GPIO_NUM_2
 #define PIN_FUEL_ALERT     GPIO_NUM_5  // MAX17048 ALRT (optional)
 
+// Camera (OV2640)
+#define PIN_CAM_PWDN       GPIO_NUM_4
+#define PIN_CAM_RESET      GPIO_NUM_1   // camera reset driven by GPIO1
+#define PIN_CAM_XCLK       GPIO_NUM_10
+#define PIN_CAM_SIOD       GPIO_NUM_38
+#define PIN_CAM_SIOC       GPIO_NUM_39
+#define PIN_CAM_VSYNC      GPIO_NUM_6
+#define PIN_CAM_HREF       GPIO_NUM_7
+#define PIN_CAM_PCLK       GPIO_NUM_12
+// Data lines labeled D2-D9 on the breakout
+#define PIN_CAM_D2         GPIO_NUM_11
+#define PIN_CAM_D3         GPIO_NUM_13
+#define PIN_CAM_D4         GPIO_NUM_18
+#define PIN_CAM_D5         GPIO_NUM_17
+#define PIN_CAM_D6         GPIO_NUM_14
+#define PIN_CAM_D7         GPIO_NUM_15
+#define PIN_CAM_D8         GPIO_NUM_48
+#define PIN_CAM_D9         GPIO_NUM_47
+
 #define I2C_PORT I2C_NUM_0
 #define I2C_CLK_HZ 400000
 
