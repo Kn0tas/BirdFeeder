@@ -4,6 +4,7 @@
 /.vscode/
 /.idea/
 /managed_components/
+main/wifi_secrets.h
 dependencies.lock
 *.pyc
 __pycache__/

@@ -14,6 +14,7 @@
 #include "storage/fram.h"
 #include "logging/events.h"
 #include "max17048.h"
+#include "nvs_flash.h"
 
 static const char *TAG = "app_main";
 
@@ -39,6 +40,15 @@ static void handle_motion_event(void) {
 }
 
 void app_main(void) {
+    // NVS needed for Wi-Fi; erase/reinit if needed
+    esp_err_t nvs_ret = nvs_flash_init();
+    if (nvs_ret == ESP_ERR_NVS_NO_FREE_PAGES || nvs_ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ESP_ERROR_CHECK(nvs_flash_init());
+    } else {
+        ESP_ERROR_CHECK(nvs_ret);
+    }
+
     ESP_ERROR_CHECK(power_manager_init());
     ESP_ERROR_CHECK(fram_init());
     ESP_ERROR_CHECK(max17048_init());
