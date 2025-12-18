@@ -11,6 +11,7 @@
         "comms/ota.c"
         "storage/fram.c"
         "logging/events.c"
+        "vision/model_data.c"
     INCLUDE_DIRS
         "."
         "sensors"
