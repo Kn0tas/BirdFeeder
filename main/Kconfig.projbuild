@@ -1,0 +1,22 @@
+menu "BirdFeeder Wi-Fi"
+
+config WIFI_SSID
+    string "Wi-Fi SSID"
+    default ""
+    help
+        Set the Wi-Fi network name (not stored in source control; sdkconfig is ignored).
+
+config WIFI_PASSWORD
+    string "Wi-Fi password"
+    default ""
+    help
+        Set the Wi-Fi password (not stored in source control; sdkconfig is ignored).
+
+config WIFI_MAX_RETRY
+    int "Wi-Fi max reconnect retries"
+    default 5
+    range 0 100
+    help
+        Number of reconnect attempts before giving up.
+
+endmenu
