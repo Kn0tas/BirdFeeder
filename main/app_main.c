@@ -15,27 +15,64 @@
 #include "logging/events.h"
 #include "max17048.h"
 #include "nvs_flash.h"
+#include "esp_psram.h"
 
 static const char *TAG = "app_main";
 
 static void handle_motion_event(void) {
     events_log("motion detected");
-    if (servo_set_lid_closed(true) != ESP_OK) {
-        ESP_LOGE(TAG, "servo close failed");
-        return;
-    }
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    if (servo_set_lid_closed(false) != ESP_OK) {
-        ESP_LOGE(TAG, "servo open failed");
+    const TickType_t detection_window = pdMS_TO_TICKS(5000);
+    const float threat_thresh = 0.70f;
+    const int consecutive_needed = 2;
+    int consecutive_hits = 0;
+    bool lid_closed = false;
+    TickType_t start = xTaskGetTickCount();
+
+    while ((xTaskGetTickCount() - start) < detection_window) {
+        camera_frame_t frame = {0};
+        if (camera_capture(&frame) != ESP_OK) {
+            ESP_LOGW(TAG, "motion capture failed");
+            vTaskDelay(pdMS_TO_TICKS(200));
+            continue;
+        }
+        vision_result_t res = {0};
+        if (vision_classify(&frame, &res) != ESP_OK) {
+            ESP_LOGW(TAG, "vision classify failed");
+            camera_frame_return(&frame);
+            vTaskDelay(pdMS_TO_TICKS(200));
+            continue;
+        }
+        camera_frame_return(&frame);
+
+        bool is_threat = (res.kind == VISION_RESULT_CROW ||
+                          res.kind == VISION_RESULT_SQUIRREL ||
+                          res.kind == VISION_RESULT_RAT) &&
+                         res.confidence >= threat_thresh;
+
+        if (is_threat) {
+            consecutive_hits++;
+            ESP_LOGI(TAG, "threat detected (%d/%d) kind=%d conf=%.2f", consecutive_hits, consecutive_needed, res.kind, res.confidence);
+            if (!lid_closed && consecutive_hits >= consecutive_needed) {
+                if (servo_set_lid_closed(true) == ESP_OK) {
+                    lid_closed = true;
+                    ESP_LOGI(TAG, "servo closed due to threat");
+                } else {
+                    ESP_LOGE(TAG, "servo close failed");
+                }
+            }
+        } else {
+            consecutive_hits = 0;
+        }
+        vTaskDelay(pdMS_TO_TICKS(300));
     }
 
-    // Capture a frame on motion for validation/telemetry
-    camera_frame_t frame = {0};
-    if (camera_capture(&frame) == ESP_OK) {
-        ESP_LOGI(TAG, "motion capture %dx%d (%u bytes, jpeg=%d)", frame.width, frame.height, (unsigned)frame.size, frame.is_jpeg);
-        camera_frame_return(&frame);
-    } else {
-        ESP_LOGW(TAG, "motion capture failed");
+    if (lid_closed) {
+        vTaskDelay(pdMS_TO_TICKS(5000));
+        if (servo_set_lid_closed(false) != ESP_OK) {
+            ESP_LOGE(TAG, "servo reopen failed");
+        } else {
+            ESP_LOGI(TAG, "servo reopened after threat window");
+        }
     }
 }
 
@@ -47,6 +84,13 @@ void app_main(void) {
         ESP_ERROR_CHECK(nvs_flash_init());
     } else {
         ESP_ERROR_CHECK(nvs_ret);
+    }
+
+    size_t psram_size = esp_psram_get_size();
+    if (psram_size > 0) {
+        ESP_LOGI(TAG, "PSRAM detected: %u bytes", (unsigned)psram_size);
+    } else {
+        ESP_LOGW(TAG, "PSRAM not detected");
     }
 
     ESP_ERROR_CHECK(power_manager_init());

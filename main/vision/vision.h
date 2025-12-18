@@ -5,8 +5,11 @@
 
 typedef enum {
     VISION_RESULT_UNKNOWN = 0,
-    VISION_RESULT_BIRD,
+    VISION_RESULT_CROW,
     VISION_RESULT_SQUIRREL,
+    VISION_RESULT_BIRD,
+    VISION_RESULT_RAT,
+    VISION_RESULT_OTHER,
 } vision_kind_t;
 
 typedef struct {
