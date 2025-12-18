@@ -13,9 +13,8 @@ esp_err_t vision_classify(const camera_frame_t *frame, vision_result_t *result) 
     if (!frame || !result) {
         return ESP_ERR_INVALID_ARG;
     }
-    // Placeholder classification
+    // TODO: run TFLite Micro model once integrated.
     result->kind = VISION_RESULT_UNKNOWN;
     result->confidence = 0.0f;
-    ESP_LOGI(TAG, "classification stub (no frame data)");
     return ESP_OK;
 }
