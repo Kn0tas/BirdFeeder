@@ -59,9 +59,9 @@ esp_err_t camera_init(void) {
         .pixel_format = PIXFORMAT_JPEG,
         .frame_size = FRAMESIZE_QQVGA, // smaller to fit DRAM if PSRAM fails
         .jpeg_quality = 20,            // lighter compression workload
-        .fb_count = 3,                 // triple buffer to reduce overrun/NO-SOI warnings
+        .fb_count = 1,                 // single buffer; capture only on demand
         .fb_location = CAMERA_FB_IN_DRAM,
-        .grab_mode = CAMERA_GRAB_LATEST, // drop stale frames if consumer is slower
+        .grab_mode = CAMERA_GRAB_WHEN_EMPTY, // do not run continuously
     };
 
     esp_err_t err = esp_camera_init(&cfg);
