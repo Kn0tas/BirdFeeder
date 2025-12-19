@@ -26,27 +26,34 @@ Battery-friendly, Wi-Fi-connected bird feeder with on-device vision to keep squi
 ## Project layout
 - `CMakeLists.txt`: ESP-IDF project root
 - `main/`: application sources
-  - `app_main.c`: ties subsystems together
+  - `app_main.c`: ties subsystems together; PIR-driven motion loop
   - `board_config.h`: pin map and shared settings
   - `power_manager.*`: deep sleep hooks (stub)
-  - `sensors/`: PIR + camera stubs
-  - `vision/`: placeholder classifier API
-  - `actuators/`: servo control stub
-  - `comms/`: Wi-Fi + OTA stubs
-  - `storage/`: FRAM (I2C setup) stub
+  - `sensors/`: PIR + camera
+  - `vision/`: classifier API + embedded TFLite model (`model_int8.tflite`)
+  - `actuators/`: servo control
+  - `comms/`: Wi-Fi (secrets via `wifi_secrets.h`) + OTA stub
+  - `storage/`: FRAM (I2C setup)
   - `logging/`: event logging shim
-- `scripts/`, `tests/`: reserved for tooling and tests
+- `tools/train_and_convert.py`: trains a tiny MobileNetV2 model on `datasets/` and exports `main/vision/model_int8.tflite` (int8).
+- `partitions.csv`: custom partition table with a larger factory slot (3 MB).
+- `datasets/`: class folders for training data (crow/squirrel/rat/magpie/bird/other/unknown).
 
-## Known issues / TODOs
-- Camera driver currently logs "QVGA" but is configured to capture QQVGA to save memory; adjust either the log or frame size once PSRAM is validated.
-- Camera reset pin in firmware is GPIO1; earlier notes used GPIO46. Wire RESET to GPIO1 or update `PIN_CAM_RESET` in `main/board_config.h` to match your hardware.
-- `camera.c` uses `vTaskDelay` and `pdMS_TO_TICKS` but is missing the FreeRTOS includes; add them before building.
+## Wi-Fi secrets
+- Copy `main/wifi_secrets.example.h` to `main/wifi_secrets.h` and fill in your SSID/password (gitignored).
+
+## Model training + embedding
+- Train and export:
+  - `python tools/train_and_convert.py --epochs 10 --img-size 96 --batch 32 --output main/vision/model_int8.tflite`
+  - Uses `vision/labels.txt` class order: crow, squirrel, rat, magpie, bird, other, unknown.
+  - Saves SavedModel to `build/saved_model/` and int8 TFLite to `main/vision/model_int8.tflite`.
+- Build embeds `model_int8.tflite` automatically via `EMBED_FILES`.
 
 ## Wiring snapshot
 - I2C bus: GPIO8 (SDA), GPIO9 (SCL); FRAM @0x50, MAX17048 @0x36; ALRT -> GPIO5
 - Servo: GPIO2 (LEDC PWM); power from 5 V with common ground; add 470-1000 µF bulk cap near servo supply
 - PIR: AM312 on GPIO16 (signal), 3.3 V, GND
-- Camera (OV2640): PWDN GPIO4, RESET GPIO46, SIOD/SIOC GPIO38/39, D0..D7 GPIO11/13/18/17/14/15/48/47, VSYNC/HREF/PCLK/XCLK GPIO6/7/12/10; 3.3 V/GND
+- Camera (OV2640): PWDN GPIO4, RESET GPIO1 (driven by firmware), SIOD/SIOC GPIO38/39, D0..D7 GPIO11/13/18/17/14/15/48/47, VSYNC/HREF/PCLK/XCLK GPIO6/7/12/10; 3.3 V/GND
 - Grounds: common across all devices; 3.3 V only for logic/I2C devices
 
 ## Getting started (ESP-IDF)
@@ -67,6 +74,7 @@ Battery-friendly, Wi-Fi-connected bird feeder with on-device vision to keep squi
 
 ## Notes
 - Pins for camera, servo, and power-switching rails are placeholders; adjust `main/board_config.h` once hardware is finalized.
-- Vision and OTA are stubs; next steps are to pick a tiny model (ESP-DL/TFLM) and add provisioning + OTA flow.
+- Vision: model is embedded; `vision_classify` still needs the TFLite Micro inference loop wired up to use it and log detections.
+- OTA is stubbed; Wi-Fi uses secrets from `wifi_secrets.h`.
 - Power management is minimal; plan to use PIR as the primary wake source and keep Wi-Fi/camera off by default.
 - BQ24074 hookup is paused until the TPS63020 (3.3 V buck) arrives; for now, power via USB/bench 5 V feeding the interim regulator.
