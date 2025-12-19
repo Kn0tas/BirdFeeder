@@ -1,0 +1,7 @@
+crow
+squirrel
+rat
+magpie
+bird
+other
+unknown

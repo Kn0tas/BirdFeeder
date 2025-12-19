@@ -1,4 +1,6 @@
-﻿idf_component_register(
+set(MODEL_TFLITE "vision/model_int8.tflite")
+
+idf_component_register(
     SRCS
         "app_main.c"
         "power_manager.c"
@@ -6,12 +8,12 @@
         "sensors/pir.c"
         "sensors/camera.c"
         "vision/vision.c"
+        "vision/model_data.c"
         "actuators/servo.c"
         "comms/wifi.c"
         "comms/ota.c"
         "storage/fram.c"
         "logging/events.c"
-        "vision/model_data.c"
     INCLUDE_DIRS
         "."
         "sensors"
@@ -20,4 +22,6 @@
         "storage"
         "logging"
         "vision"
+    EMBED_FILES
+        ${MODEL_TFLITE}
 )

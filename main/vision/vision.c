@@ -5,6 +5,7 @@
 static const char *TAG = "vision";
 
 esp_err_t vision_init(void) {
+    vision_model_data_init();
     if (g_model_tflite_len == 0) {
         ESP_LOGW(TAG, "no model embedded; vision will always return UNKNOWN");
     } else {

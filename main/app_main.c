@@ -86,12 +86,16 @@ void app_main(void) {
         ESP_ERROR_CHECK(nvs_ret);
     }
 
+#if CONFIG_SPIRAM_SUPPORT
     size_t psram_size = esp_psram_get_size();
     if (psram_size > 0) {
         ESP_LOGI(TAG, "PSRAM detected: %u bytes", (unsigned)psram_size);
     } else {
         ESP_LOGW(TAG, "PSRAM not detected");
     }
+#else
+    ESP_LOGW(TAG, "PSRAM not enabled in config");
+#endif
 
     ESP_ERROR_CHECK(power_manager_init());
     ESP_ERROR_CHECK(fram_init());
