@@ -26,6 +26,7 @@ static void handle_motion_event(void) {
     const int consecutive_needed = 2;
     int consecutive_hits = 0;
     bool lid_closed = false;
+    bool discard_first = true;
     TickType_t start = xTaskGetTickCount();
 
     while ((xTaskGetTickCount() - start) < detection_window) {
@@ -33,6 +34,12 @@ static void handle_motion_event(void) {
         if (camera_capture(&frame) != ESP_OK) {
             ESP_LOGW(TAG, "motion capture failed");
             vTaskDelay(pdMS_TO_TICKS(200));
+            continue;
+        }
+        if (discard_first) {
+            camera_frame_return(&frame);
+            discard_first = false;
+            vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
         vision_result_t res = {0};

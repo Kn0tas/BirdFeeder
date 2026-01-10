@@ -63,7 +63,7 @@ esp_err_t camera_init(void) {
         .jpeg_quality = 20,            // lighter compression workload
         .fb_count = 2,                 // double buffer to reduce stale frames
         .fb_location = CAMERA_FB_IN_DRAM,
-        .grab_mode = CAMERA_GRAB_LATEST, // drop old frames after idle
+        .grab_mode = CAMERA_GRAB_WHEN_EMPTY, // only capture on demand
     };
 
     esp_err_t err = esp_camera_init(&cfg);
