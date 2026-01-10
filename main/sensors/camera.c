@@ -4,6 +4,8 @@
 #include "esp_log.h"
 #include "mbedtls/base64.h"
 #include "driver/gpio.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -52,16 +54,16 @@ esp_err_t camera_init(void) {
         .pin_href = PIN_CAM_HREF,
         .pin_pclk = PIN_CAM_PCLK,
 
-        .xclk_freq_hz = 10000000,    // try 10 MHz for stability
+        .xclk_freq_hz = 20000000,    // OV2640 often prefers 20 MHz
         .ledc_timer = LEDC_TIMER_0,
         .ledc_channel = LEDC_CHANNEL_0,
 
         .pixel_format = PIXFORMAT_JPEG,
         .frame_size = FRAMESIZE_QQVGA, // smaller to fit DRAM if PSRAM fails
         .jpeg_quality = 20,            // lighter compression workload
-        .fb_count = 1,                 // single buffer; capture only on demand
+        .fb_count = 2,                 // double buffer to reduce stale frames
         .fb_location = CAMERA_FB_IN_DRAM,
-        .grab_mode = CAMERA_GRAB_WHEN_EMPTY, // do not run continuously
+        .grab_mode = CAMERA_GRAB_LATEST, // drop old frames after idle
     };
 
     esp_err_t err = esp_camera_init(&cfg);
@@ -70,6 +72,14 @@ esp_err_t camera_init(void) {
         return err;
     }
     s_inited = true;
+    // Flush a couple of frames after init to avoid stale/invalid JPEGs.
+    for (int i = 0; i < 2; ++i) {
+        camera_fb_t *fb = esp_camera_fb_get();
+        if (fb) {
+            esp_camera_fb_return(fb);
+        }
+        vTaskDelay(pdMS_TO_TICKS(30));
+    }
     ESP_LOGI(TAG, "camera ready (QQVGA/JPEG)");
     return ESP_OK;
 }
