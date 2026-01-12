@@ -79,7 +79,8 @@ def get_datasets(data_dir: Path, class_names, img_size: int, batch: int, val_spl
 
 def build_model(img_size: int, num_classes: int):
     inputs = tf.keras.Input(shape=(img_size, img_size, 3))
-    x = tf.keras.layers.Rescaling(1.0 / 255)(inputs)
+    # MobileNetV2 expects [-1, 1] inputs
+    x = tf.keras.layers.Rescaling(1.0 / 127.5, offset=-1.0)(inputs)
     x = tf.keras.layers.RandomFlip("horizontal")(x)
     x = tf.keras.layers.RandomRotation(0.05)(x)
     x = tf.keras.layers.RandomZoom(0.1)(x)

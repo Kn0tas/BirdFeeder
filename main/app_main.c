@@ -63,6 +63,9 @@ static void handle_motion_event(void) {
       vTaskDelay(pdMS_TO_TICKS(100));
       continue;
     }
+    /* // Debug: Dump frame to check what the camera sees
+    camera_dump_base64(&frame); */
+
     vision_result_t res = {0};
     if (vision_classify(&frame, &res) != ESP_OK) {
       ESP_LOGW(TAG, "vision classify failed");
