@@ -3,11 +3,12 @@ set(MODEL_TFLITE "vision/model_int8.tflite")
 idf_component_register(
     SRCS
         "app_main.c"
+        "i2c_bus.c"
         "power_manager.c"
         "max17048.c"
         "sensors/pir.c"
         "sensors/camera.c"
-        "vision/vision.c"
+        "vision/vision.cpp"
         "vision/model_data.c"
         "actuators/servo.c"
         "comms/wifi.c"
