@@ -106,8 +106,9 @@ def build_model(img_size: int, num_classes: int):
     return model
 
 
-def convert_to_int8(saved_model_dir: Path, out_tflite: Path, rep_dataset):
-    converter = tf.lite.TFLiteConverter.from_saved_model(str(saved_model_dir))
+
+def convert_to_int8(model, out_tflite: Path, rep_dataset):
+    converter = tf.lite.TFLiteConverter.from_keras_model(model)
     converter.optimizations = [tf.lite.Optimize.DEFAULT]
     converter.representative_dataset = rep_dataset
     converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
@@ -120,37 +121,44 @@ def convert_to_int8(saved_model_dir: Path, out_tflite: Path, rep_dataset):
 
 
 def main():
-    repo_root = Path(__file__).resolve().parent.parent
+    try:
+        repo_root = Path(__file__).resolve().parent.parent
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--data-dir", type=Path, default=repo_root / "datasets", help="Dataset root")
-    parser.add_argument("--epochs", type=int, default=10)
-    parser.add_argument("--img-size", type=int, default=96)
-    parser.add_argument("--batch", type=int, default=32)
-    parser.add_argument("--output", type=Path, default=repo_root / "main/vision/model_int8.tflite")
-    args = parser.parse_args()
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--data-dir", type=Path, default=repo_root / "datasets", help="Dataset root")
+        parser.add_argument("--epochs", type=int, default=10)
+        parser.add_argument("--img-size", type=int, default=96)
+        parser.add_argument("--batch", type=int, default=32)
+        parser.add_argument("--output", type=Path, default=repo_root / "main/vision/model_int8.tflite")
+        args = parser.parse_args()
 
-    labels_path = repo_root / "main/vision/labels.txt"
-    class_names = labels_path.read_text().splitlines()
-    tmp_dirs = ensure_class_dirs(args.data_dir, class_names)
+        labels_path = repo_root / "main/vision/labels.txt"
+        class_names = labels_path.read_text().splitlines()
+        tmp_dirs = ensure_class_dirs(args.data_dir, class_names)
 
-    train_ds, val_ds, class_names = get_datasets(args.data_dir, class_names, args.img_size, args.batch)
-    model = build_model(args.img_size, num_classes=len(class_names))
+        train_ds, val_ds, class_names = get_datasets(args.data_dir, class_names, args.img_size, args.batch)
+        model = build_model(args.img_size, num_classes=len(class_names))
 
-    model.fit(train_ds, validation_data=val_ds, epochs=args.epochs)
+        model.fit(train_ds, validation_data=val_ds, epochs=args.epochs)
 
-    saved_model_dir = repo_root / "build/saved_model"
-    saved_model_dir.parent.mkdir(parents=True, exist_ok=True)
-    model.save(saved_model_dir)
-    print(f"SavedModel written to {saved_model_dir}")
+        # Save as .keras for backup
+        model_path = repo_root / "build/model.keras"
+        model_path.parent.mkdir(parents=True, exist_ok=True)
+        model.save(model_path)
+        print(f"Keras model written to {model_path}")
 
-    # Representative dataset for quantization
-    def rep_gen():
-        for images, _ in train_ds.take(20):
-            yield [tf.cast(images, tf.float32)]
+        # Representative dataset for quantization
+        def rep_gen():
+            for image, _ in train_ds.unbatch().take(100):
+                yield [tf.expand_dims(tf.cast(image, tf.float32), 0)]
 
-    convert_to_int8(saved_model_dir, args.output, rep_gen)
+        convert_to_int8(model, args.output, rep_gen)
 
+    except Exception:
+        import traceback
+        with open("final_error.log", "w") as f:
+            traceback.print_exc(file=f)
+        raise
 
 if __name__ == "__main__":
     main()
