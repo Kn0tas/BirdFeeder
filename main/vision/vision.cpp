@@ -30,9 +30,10 @@ int s_input_h = 0;
 int s_input_c = 0;
 
 const vision_kind_t kLabelToKind[] = {
-    VISION_RESULT_CROW,    VISION_RESULT_SQUIRREL, VISION_RESULT_RAT,
-    VISION_RESULT_MAGPIE,  VISION_RESULT_BIRD,     VISION_RESULT_OTHER,
-    VISION_RESULT_UNKNOWN,
+    VISION_RESULT_CROW,
+    VISION_RESULT_MAGPIE,
+    VISION_RESULT_SQUIRREL,
+    VISION_RESULT_BACKGROUND,
 };
 
 int tensor_element_count(const TfLiteTensor *tensor) {
@@ -149,6 +150,37 @@ esp_err_t vision_classify(const camera_frame_t *frame,
     return ESP_ERR_INVALID_STATE;
   }
 
+  if (frame->size < 1024) {
+    ESP_LOGW(TAG, "JPEG too small (%u bytes), ignoring", (unsigned)frame->size);
+    return ESP_ERR_INVALID_SIZE;
+  }
+
+  // Check for SOI (0xFFD8) — must be first two bytes
+  if (frame->data[0] != 0xFF || frame->data[1] != 0xD8) {
+    ESP_LOGE(TAG, "Invalid JPEG: Missing SOI marker");
+    return ESP_FAIL;
+  }
+
+  // Check for EOI (0xFFD9) somewhere in the last 16 bytes.
+  // FB-OVF truncates JPEGs before the EOI is written. fmt2rgb888() silently
+  // "succeeds" on truncated data, producing a partial decode that locks the
+  // model onto constant outputs. Reject any frame missing the end marker.
+  {
+    bool found_eoi = false;
+    const size_t scan = (frame->size >= 16) ? 16 : frame->size;
+    for (size_t i = frame->size - scan; i < frame->size - 1; ++i) {
+      if (frame->data[i] == 0xFF && frame->data[i + 1] == 0xD9) {
+        found_eoi = true;
+        break;
+      }
+    }
+    if (!found_eoi) {
+      ESP_LOGW(TAG, "Truncated JPEG (no EOI), skipping (%u bytes)",
+               (unsigned)frame->size);
+      return ESP_FAIL;
+    }
+  }
+
   const int src_w = frame->width;
   const int src_h = frame->height;
   const size_t rgb_size = (size_t)src_w * (size_t)src_h * 3;
@@ -157,6 +189,10 @@ esp_err_t vision_classify(const camera_frame_t *frame,
     ESP_LOGE(TAG, "RGB buffer alloc failed (%u bytes)", (unsigned)rgb_size);
     return ESP_ERR_NO_MEM;
   }
+
+  // CRITICAL FIX: Zero the buffer so we don't infer on stale garbage if
+  // decoding fails
+  memset(rgb, 0, rgb_size);
 
   if (!fmt2rgb888(frame->data, frame->size, PIXFORMAT_JPEG, rgb)) {
     ESP_LOGE(TAG, "JPEG to RGB888 conversion failed");
@@ -183,8 +219,11 @@ esp_err_t vision_classify(const camera_frame_t *frame,
       int src_x = crop_x + (x * crop) / s_input_w;
       size_t src_idx = ((size_t)src_y * (size_t)src_w + (size_t)src_x) * 3;
       for (int c = 0; c < 3; ++c) {
-        float real = rgb[src_idx + c] / 255.0f;
-        int32_t q = (int32_t)lrintf(real / scale + (float)zero_point);
+        // Normalise [0,255] → [-1,1] to match model's expected input range.
+        // (Rescaling was moved OUT of the model graph to eliminate MUL+ADD ops
+        //  that caused quantisation collapse in TFLite Micro's int8 path.)
+        float norm = (float)rgb[src_idx + c] / 127.5f - 1.0f;
+        int32_t q = (int32_t)lrintf(norm / scale + (float)zero_point);
         q = clamp_int(q, -128, 127);
         *input++ = (int8_t)q;
       }
@@ -222,6 +261,7 @@ esp_err_t vision_classify(const camera_frame_t *frame,
     const uint8_t *out = s_output->data.uint8;
     for (int i = 0; i < out_count; ++i) {
       float score = (float)((int)out[i] - out_zero) * out_scale;
+      ESP_LOGI(TAG, "  Class %d: %.4f", i, score);
       if (score > best_score) {
         best_score = score;
         best_idx = i;
@@ -231,6 +271,9 @@ esp_err_t vision_classify(const camera_frame_t *frame,
     ESP_LOGE(TAG, "unexpected output tensor type %d", s_output->type);
     return ESP_FAIL;
   }
+
+  // Clean mapping based on kLabelToKind info (implicit assumption on order)
+  // 0: Crow, 1: Magpie, 2: Squirrel, 3: Background
 
   const int label_count = (int)(sizeof(kLabelToKind) / sizeof(kLabelToKind[0]));
   if (best_idx < 0 || best_idx >= label_count) {

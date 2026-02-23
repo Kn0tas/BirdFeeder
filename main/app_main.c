@@ -28,12 +28,8 @@ static const char *get_vision_kind_str(vision_kind_t kind) {
     return "SQUIRREL";
   case VISION_RESULT_MAGPIE:
     return "MAGPIE";
-  case VISION_RESULT_BIRD:
-    return "BIRD";
-  case VISION_RESULT_RAT:
-    return "RAT";
-  case VISION_RESULT_OTHER:
-    return "OTHER";
+  case VISION_RESULT_BACKGROUND:
+    return "BACKGROUND";
   case VISION_RESULT_UNKNOWN:
   default:
     return "UNKNOWN";
@@ -42,29 +38,34 @@ static const char *get_vision_kind_str(vision_kind_t kind) {
 
 static void handle_motion_event(void) {
   events_log("motion detected");
-  const TickType_t detection_window = pdMS_TO_TICKS(5000);
+  const TickType_t detection_window =
+      pdMS_TO_TICKS(15000); // Longer window — camera occasionally misses frames
   const float threat_thresh = 0.70f;
   const int consecutive_needed = 2;
   int consecutive_hits = 0;
   bool lid_closed = false;
-  bool discard_first = true;
+  int discard_count =
+      3; // Discard first N frames — gives DMA time to sync after idle
   TickType_t start = xTaskGetTickCount();
 
   while ((xTaskGetTickCount() - start) < detection_window) {
     camera_frame_t frame = {0};
     if (camera_capture(&frame) != ESP_OK) {
       ESP_LOGW(TAG, "motion capture failed");
-      vTaskDelay(pdMS_TO_TICKS(200));
+      vTaskDelay(pdMS_TO_TICKS(100)); // Reduced retry delay
       continue;
     }
-    if (discard_first) {
+    if (discard_count > 0) {
       camera_frame_return(&frame);
-      discard_first = false;
+      discard_count--;
       vTaskDelay(pdMS_TO_TICKS(100));
       continue;
     }
-    /* // Debug: Dump frame to check what the camera sees
-    camera_dump_base64(&frame); */
+    // Dump raw JPEG as base64 over serial — useful to verify what the camera
+    // sees. Define BIRDFEEDER_DEBUG_FRAMES to enable (very slow, serial flood).
+#ifdef BIRDFEEDER_DEBUG_FRAMES
+    camera_dump_base64(&frame);
+#endif
 
     vision_result_t res = {0};
     if (vision_classify(&frame, &res) != ESP_OK) {
@@ -79,7 +80,7 @@ static void handle_motion_event(void) {
 
     bool is_threat =
         (res.kind == VISION_RESULT_CROW || res.kind == VISION_RESULT_SQUIRREL ||
-         res.kind == VISION_RESULT_RAT) &&
+         res.kind == VISION_RESULT_MAGPIE) &&
         res.confidence >= threat_thresh;
 
     if (is_threat) {

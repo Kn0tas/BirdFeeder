@@ -1,7 +1,4 @@
 crow
-squirrel
-rat
 magpie
-bird
-other
-unknown
+squirrel
+background

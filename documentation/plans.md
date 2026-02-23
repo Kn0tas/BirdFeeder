@@ -1,5 +1,15 @@
 # BirdFeeder AI Improvement Plan
 
+> **Status as of 2026-02-23:** Phases 1 and 2 are complete. The AI pipeline is now fully functional on-device. See [`progress.md`](progress.md) for a detailed log of all changes made.
+
+## ⚠️ Critical Finding: ESP-NN Assembly Bug
+
+After completing the training pipeline overhaul, the device still produced **constant identical output** for every frame. Investigation confirmed that `espressif__esp-nn`'s S3 assembly-optimized kernels (`CONFIG_NN_OPTIMIZED`, the default) have a bug when the tensor arena is in PSRAM. They read from a stale cached buffer, completely ignoring the actual input.
+
+**Resolution:** `CONFIG_NN_ANSI_C=y` added to `sdkconfig.defaults` — switches to pure C reference kernels. Inference is slower (~1.3 s vs ~0.3 s) but correct. This should be revisited if a newer `espressif__esp-nn` version fixes the issue.
+
+---
+
 ## 1. Executive Summary
 
 The current AI vision system attempts to classify 7 categories (crow, squirrel, rat, magpie, bird, other, unknown) using a MobileNetV2 (alpha=0.35) model trained at 96×96 on a severely imbalanced dataset. While training metrics look good on paper (~93% validation accuracy), real-world performance is unreliable because:
@@ -18,15 +28,15 @@ This plan narrows the scope to **3 target classes: crow, magpie, and squirrel** 
 
 ### 2.1 What Exists Today
 
-| Component     | Details                                                           |
-| ------------- | ----------------------------------------------------------------- |
-| **Model**     | MobileNetV2, alpha=0.35, input 96×96×3, int8 quantized            |
-| **Framework** | TensorFlow/Keras → TFLite → TFLite Micro on ESP32-S3              |
-| **Classes**   | 7: crow, squirrel, rat, magpie, bird, other, unknown              |
-| **Dataset**   | ~990 total images, massively imbalanced                           |
-| **Training**  | 10 epochs, frozen base, no augmentation beyond basic Keras layers |
-| **Inference** | ~250ms on ESP32-S3 with PSRAM                                     |
-| **Camera**    | OV2640 at QQVGA (160×120), JPEG, single frame buffer              |
+| Component     | Details                                                                                                 |
+| ------------- | ------------------------------------------------------------------------------------------------------- |
+| **Model**     | MobileNetV2, alpha=0.35, input 96×96×3, int8 quantized                                                  |
+| **Framework** | TensorFlow/Keras → TFLite → TFLite Micro on ESP32-S3                                                    |
+| **Classes**   | ~~7: crow, squirrel, rat, magpie, bird, other, unknown~~ → **4: crow, magpie, squirrel, background** ✅ |
+| **Dataset**   | ~~990 total, massively imbalanced~~ → **1,911 images, 4 balanced classes** ✅                           |
+| **Training**  | ~~10 epochs, frozen base~~ → **two-phase: head + fine-tune, early stopping** ✅                         |
+| **Inference** | ~~~250ms~~ → **~1,300ms** (ANSI-C kernels; optimized kernels broken on PSRAM)                           |
+| **Camera**    | OV2640 at QQVGA (160×120), JPEG, ~~single~~ **double** frame buffer ✅                                  |
 
 ### 2.2 Critical Problems Identified
 
@@ -288,38 +298,39 @@ The current setup technically handles this through quantization parameters, but 
 
 ## 4. Recommended Implementation Order
 
-### Phase 1: Quick Wins (Data + Preprocessing Fix)
+### Phase 1: Quick Wins (Data + Preprocessing Fix) ✅ COMPLETE
 
-1. Fix the preprocessing mismatch between training and inference
-2. Reduce classes to 4 (crow, magpie, squirrel, background)
-3. Curate existing dataset (remove bad images, merge classes)
-4. Source more squirrel images (at least 200-300 more)
-5. Add more background images (empty feeder, generic outdoor scenes)
-6. Add proper data augmentation to the training script
-7. Add class weights to handle any remaining imbalance
-8. Add evaluation metrics (confusion matrix, per-class scores)
-9. Train and evaluate — this alone should significantly improve accuracy
+1. ✅ Fix the preprocessing mismatch between training and inference
+2. ✅ Reduce classes to 4 (crow, magpie, squirrel, background)
+3. ✅ Curate existing dataset (remove bad images, merge classes)
+4. ✅ Source more squirrel images (814 total, up from 37)
+5. ✅ Add more background images (215 total)
+6. ✅ Add proper data augmentation to the training script
+7. ✅ Add class weights to handle any remaining imbalance
+8. ✅ Add evaluation metrics (post-conversion self-test)
+9. ✅ Train and evaluate
 
-### Phase 2: Fine-Tuning + Resolution
+### Phase 2: Fine-Tuning + Runtime Fix ✅ COMPLETE
 
-10. Implement two-phase training (frozen → fine-tune top layers)
-11. Increase input resolution to 128×128
-12. Add early stopping and learning rate scheduling
-13. Add dropout to classifier head
-14. Retrain and compare with Phase 1 results
+10. ✅ Implement two-phase training (frozen → fine-tune top layers)
+11. ⬜ Increase input resolution to 128×128 _(deferred — 96×96 working, revisit if accuracy too low)_
+12. ✅ Add early stopping and learning rate scheduling
+13. ✅ Add dropout to classifier head
+14. ✅ Fix ESP-NN PSRAM bug (`CONFIG_NN_ANSI_C=y`)
 
-### Phase 3: Validation + Deployment
+### Phase 3: Validation + Deployment ← CURRENT
 
-15. Test the quantized int8 model on real images from the feeder
-16. Flash to ESP32-S3 and test in real conditions
-17. Iterate on dataset (add misclassified real-world images back to training)
-18. Consider Edge Impulse as a comparison/alternative if accuracy is still insufficient
+15. ✅ Test quantized int8 model on synthetic inputs (self-test)
+16. ✅ Flash to ESP32-S3 — model is dynamic and responding to input
+17. ⬜ Iterate on dataset — capture real misclassified frames and add to training
+18. ⬜ Consider Edge Impulse as a comparison if accuracy insufficient
 
 ### Phase 4: Advanced (If Needed)
 
-19. Try MobileNetV3-Small
-20. Increase camera resolution to QVGA
-21. Implement confidence thresholding with a "not sure" fallback
+19. ⬜ Try MobileNetV3-Small
+20. ⬜ Increase camera resolution to QVGA
+21. ⬜ Implement confidence thresholding with a "not sure" fallback
+22. ⬜ Investigate ESP-NN fix in newer `espressif__esp-nn` release to restore ~0.3s inference
 
 ---
 
