@@ -9,7 +9,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-
 static const char *TAG = "camera";
 static bool s_inited = false;
 
@@ -55,16 +54,20 @@ esp_err_t camera_init(void) {
       .pin_href = PIN_CAM_HREF,
       .pin_pclk = PIN_CAM_PCLK,
 
-      .xclk_freq_hz = 20000000, // OV2640 often prefers 20 MHz
-      .ledc_timer = LEDC_TIMER_0,
+      .xclk_freq_hz = 20000000, // 20MHz — OV2640 preferred clock; 10MHz causes
+                                // I2S DMA NO-SOI sync failure
+      .ledc_timer =
+          LEDC_TIMER_0, // Camera XCLK uses TIMER_0 (servo now uses TIMER_1)
       .ledc_channel = LEDC_CHANNEL_0,
 
       .pixel_format = PIXFORMAT_JPEG,
-      .frame_size = FRAMESIZE_QQVGA, // smaller to fit DRAM if PSRAM fails
-      .jpeg_quality = 20,            // lighter compression workload
-      .fb_count = 1,                 // single buffer to ensure freshness
-      .fb_location = CAMERA_FB_IN_DRAM,
-      .grab_mode = CAMERA_GRAB_LATEST, // discard old frames, get newest
+      .frame_size = FRAMESIZE_QQVGA, // 160x120 — smallest, most reliable
+      .jpeg_quality = 20, // quality 20 gives better images on OV2640 than 12
+                          // (lower != better on this sensor)
+      .fb_count = 2,      // Double buffer — prevents DMA ring overflow (FB-OVF)
+      .fb_location = CAMERA_FB_IN_DRAM, // DRAM via AHB — fastest DMA path,
+                                        // avoids SPI-PSRAM bottleneck
+      .grab_mode = CAMERA_GRAB_LATEST,  // Always get newest frame
   };
 
   esp_err_t err = esp_camera_init(&cfg);
@@ -81,7 +84,7 @@ esp_err_t camera_init(void) {
     }
     vTaskDelay(pdMS_TO_TICKS(30));
   }
-  ESP_LOGI(TAG, "camera ready (QQVGA/JPEG)");
+  ESP_LOGI(TAG, "camera ready (QQVGA/JPEG, 20MHz, q=20, fb=2/DRAM)");
   return ESP_OK;
 }
 
