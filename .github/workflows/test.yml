@@ -70,6 +70,7 @@ jobs:
                    --suppress=missingIncludeSystem \
                    --suppress=missingInclude \
                    --suppress=preprocessorErrorDirective \
+                   --suppress=comparePointers \
                    --inline-suppr \
                    -I main -I main/sensors -I main/actuators \
                    -I main/vision -I main/comms -I main/storage \

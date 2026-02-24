@@ -61,7 +61,7 @@ esp_err_t vision_init(void) {
   s_model = tflite::GetModel(g_model_tflite);
   if (s_model->version() != TFLITE_SCHEMA_VERSION) {
     ESP_LOGE(TAG, "model schema %" PRIu32 " != supported %" PRIu32,
-             s_model->version(), TFLITE_SCHEMA_VERSION);
+             (uint32_t)s_model->version(), (uint32_t)TFLITE_SCHEMA_VERSION);
     return ESP_ERR_INVALID_VERSION;
   }
 

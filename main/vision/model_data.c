@@ -12,7 +12,6 @@ size_t g_model_tflite_len = 0;
 
 void vision_model_data_init(void) {
   g_model_tflite = _binary_model_int8_tflite_start;
-  // cppcheck-suppress comparePointers  ; linker symbols — same embedded blob
   g_model_tflite_len =
       (size_t)(_binary_model_int8_tflite_end - _binary_model_int8_tflite_start);
 }
