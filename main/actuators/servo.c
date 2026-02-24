@@ -3,6 +3,8 @@
 #include "driver/ledc.h"
 #include "esp_log.h"
 #include "servo_math.h"
+#include <inttypes.h>
+
 
 static const char *TAG = "servo";
 static bool s_inited = false;
@@ -59,7 +61,7 @@ esp_err_t servo_set_lid_closed(bool closed) {
     ESP_LOGE(TAG, "update_duty failed: %s", esp_err_to_name(err));
     return err;
   }
-  ESP_LOGI(TAG, "servo moved to %s (pulse %uus)", closed ? "closed" : "open",
-           pulse);
+  ESP_LOGI(TAG, "servo moved to %s (pulse %" PRIu32 "us)",
+           closed ? "closed" : "open", pulse);
   return ESP_OK;
 }

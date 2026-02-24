@@ -1,5 +1,6 @@
 #include "vision.h"
 
+#include <inttypes.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,7 +10,7 @@
 #include "esp_log.h"
 #include "img_converters.h"
 
-#include "vision/model_data.h"
+#include "model_data.h"
 
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
@@ -17,7 +18,7 @@
 
 static const char *TAG = "vision";
 
-#include "vision/vision_utils.h"
+#include "vision_utils.h"
 
 namespace {
 constexpr size_t kTensorArenaSize = 2 * 1024 * 1024; // 2MB for PSRAM
@@ -59,8 +60,8 @@ esp_err_t vision_init(void) {
 
   s_model = tflite::GetModel(g_model_tflite);
   if (s_model->version() != TFLITE_SCHEMA_VERSION) {
-    ESP_LOGE(TAG, "model schema %d != supported %d", s_model->version(),
-             TFLITE_SCHEMA_VERSION);
+    ESP_LOGE(TAG, "model schema %" PRIu32 " != supported %" PRIu32,
+             (uint32_t)s_model->version(), (uint32_t)TFLITE_SCHEMA_VERSION);
     return ESP_ERR_INVALID_VERSION;
   }
 

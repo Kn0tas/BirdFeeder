@@ -8,7 +8,6 @@ import numpy as np
 import pytest
 from conftest import CLASSES, INPUT_SIZE, quantize_input, run_inference
 
-
 # ---------------------------------------------------------------------------
 # Model structure tests
 # ---------------------------------------------------------------------------

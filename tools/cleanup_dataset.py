@@ -1,6 +1,7 @@
-import os
-import tensorflow as tf
 from pathlib import Path
+
+import tensorflow as tf
+
 
 def remove_corrupted_images(folder: str):
     root = Path(folder)
@@ -8,12 +9,12 @@ def remove_corrupted_images(folder: str):
     for file_path in root.rglob('*.jpg'):
         try:
             image_string = tf.io.read_file(str(file_path))
-            image = tf.image.decode_jpeg(image_string, channels=3)
-        except Exception as e:
+            tf.image.decode_jpeg(image_string, channels=3)
+        except Exception:
             print(f"Removing corrupted image: {file_path}")
             file_path.unlink()
             removed_count += 1
-            
+
     print(f"Cleanup complete. Removed {removed_count} corrupted images.")
 
 if __name__ == "__main__":
