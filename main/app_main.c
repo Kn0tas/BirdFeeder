@@ -38,9 +38,8 @@ static const char *get_vision_kind_str(vision_kind_t kind) {
 
 static void handle_motion_event(void) {
   events_log("motion detected");
-  const TickType_t detection_window =
-      pdMS_TO_TICKS(15000); // Longer window — camera occasionally misses frames
-  const float threat_thresh = 0.70f;
+  const TickType_t detection_window = pdMS_TO_TICKS(5000);
+  const float threat_thresh = 0.80f; // Increased to filter low-confidence noise
   const int consecutive_needed = 2;
   int consecutive_hits = 0;
   bool lid_closed = false;
