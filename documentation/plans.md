@@ -1,4 +1,8 @@
-# BirdFeeder AI Improvement Plan
+# BirdFeeder Plans
+
+---
+
+# Plan 1: AI Improvement Plan
 
 > **Status as of 2026-02-23:** Phases 1 and 2 are complete. The AI pipeline is now fully functional on-device. See [`progress.md`](progress.md) for a detailed log of all changes made.
 
@@ -396,3 +400,74 @@ At 96×96 resolution, color patterns (especially the magpie's white patches) and
 | Crow/magpie still confused after improvements           | Medium     | Fine-tuning + higher resolution; worst case merge into single "corvid" class |
 | Quantization degrades accuracy too much                 | Low        | Use representative dataset for quantization calibration                      |
 | New model fails to load on ESP32-S3                     | Low        | Test op resolver compatibility; add any missing ops                          |
+
+---
+
+# Plan 2: Code Cleanup & Refactoring
+
+> **Status as of 2026-02-24:** Identified during a full code review. All items are minor/cosmetic — the codebase architecture is solid and no structural refactoring is needed.
+
+### 1. Clean Up Stray Root Files
+
+Several debug/development leftover files sit in the project root and add clutter:
+
+| File                    | Action | Reason                                                                       |
+| ----------------------- | ------ | ---------------------------------------------------------------------------- |
+| `out.txt`               | Delete | Debug output artifact                                                        |
+| `out2.txt`              | Delete | Debug output artifact                                                        |
+| `final_error.log`       | Delete | One-off error log (`.gitignore` already excludes `*.log`)                    |
+| `training_log.txt`      | Delete | Old training log                                                             |
+| `test_tflite.py` (root) | Delete | Duplicate — a more complete version already exists at `tools/test_tflite.py` |
+
+### 2. Move `max17048` Into `sensors/`
+
+The MAX17048 fuel gauge driver (`main/max17048.c`, `main/max17048.h`) sits directly in `main/` while all other sensor drivers live under `main/sensors/`. Move it for consistency:
+
+- `main/max17048.c` → `main/sensors/max17048.c`
+- `main/max17048.h` → `main/sensors/max17048.h`
+- Update `#include "max17048.h"` → `#include "sensors/max17048.h"` in `app_main.c`
+- Update `main/CMakeLists.txt` SRCS entry
+
+### 3. Consolidate Wi-Fi Credential Configuration
+
+There are currently **two** mechanisms for Wi-Fi credentials that conflict:
+
+1. **`main/wifi_secrets.h`** — hardcoded `#define WIFI_SSID` / `WIFI_PASSWORD` (actually used by `wifi.c`)
+2. **`main/Kconfig.projbuild`** — defines `CONFIG_WIFI_SSID` / `CONFIG_WIFI_PASSWORD` via menuconfig (never referenced)
+
+**Action:** Remove `Kconfig.projbuild` since `wifi_secrets.h` is the active mechanism and is already `.gitignore`d. The Kconfig approach would be better in theory (no secret files), but switching would require updating `wifi.c` to use `CONFIG_WIFI_SSID` instead — not worth the churn right now.
+
+### 4. Remove Debug Logging in Unused Code Path
+
+In `vision.cpp`, the `kTfLiteUInt8` output branch (lines 260–269) contains per-class `ESP_LOGI` logging that would be noisy in production. The model uses `kTfLiteInt8` output, so this path is never hit — but if it ever is, the logging should not be there.
+
+**Action:** Remove the `ESP_LOGI` call inside the uint8 for-loop, or guard it with `#ifdef BIRDFEEDER_DEBUG_VISION`.
+
+### 5. Verify `wifi_secrets.h` Is Not Tracked With Real Credentials
+
+`.gitignore` lists `main/wifi_secrets.h`, but if it was committed before the gitignore rule was added, it may still be in Git history.
+
+**Action:** Run `git log --oneline -- main/wifi_secrets.h` to check. If it was ever committed with real credentials, consider rewriting history or rotating credentials.
+
+### 6. Annotate Stub Modules
+
+Three modules are currently empty stubs:
+
+| Module            | Status                                                           |
+| ----------------- | ---------------------------------------------------------------- |
+| `power_manager.c` | Two `TODO` functions, no implementation                          |
+| `ota.c`           | `ota_init()` logs "stub" and returns OK                          |
+| `events.c`        | Just wraps `ESP_LOGI` — no FRAM persistence or structured events |
+
+**Action:** No code change needed. These are intentional scaffolding for future features. Optionally add `@todo` Doxygen tags or link them to GitHub issues for tracking.
+
+### Implementation Priority
+
+All items are low-priority. Suggested order if you want to tackle them:
+
+1. **§1** — Clean up stray files (2 minutes, instant improvement)
+2. **§5** — Verify credentials aren't leaked (security check)
+3. **§3** — Remove dead `Kconfig.projbuild` (reduces confusion)
+4. **§2** — Move `max17048` to `sensors/` (keeps structure clean)
+5. **§4** — Guard debug logging (minor code hygiene)
+6. **§6** — Annotate stubs (documentation only)
