@@ -471,3 +471,184 @@ All items are low-priority. Suggested order if you want to tackle them:
 4. **§2** — Move `max17048` to `sensors/` (keeps structure clean)
 5. **§4** — Guard debug logging (minor code hygiene)
 6. **§6** — Annotate stubs (documentation only)
+
+---
+
+# Plan 3: Automated Testing
+
+> **Status as of 2026-02-24:** Planning phase. No automated tests exist yet.
+
+## Overview
+
+The BirdFeeder firmware has zero automated tests. This plan introduces two tiers of testing that can run **without hardware** (no ESP32 board required):
+
+| Tier                 | What                                           | Runs On                  | Framework                                                  |
+| -------------------- | ---------------------------------------------- | ------------------------ | ---------------------------------------------------------- |
+| **Host unit tests**  | Pure C/C++ logic (math, conversions, mappings) | PC (Windows/Linux/macOS) | [Unity](https://github.com/ThrowTheSwitch/Unity) via CMake |
+| **Model validation** | TFLite int8 model inference sanity checks      | PC with Python           | pytest + TensorFlow Lite                                   |
+
+> [!NOTE]
+> On-target integration tests (running on the actual ESP32-S3) are intentionally **out of scope** for now. They require a physical board, serial connection, and are harder to automate. Focus first on catching logic bugs cheaply on the host.
+
+---
+
+## 1. Host-Based Unit Tests (C/C++)
+
+### 1.1 Testable Functions
+
+These are **pure functions** with no hardware dependencies — they take inputs and return outputs with no side effects:
+
+| File                 | Function                        | What It Tests                                                         |
+| -------------------- | ------------------------------- | --------------------------------------------------------------------- |
+| `actuators/servo.c`  | `servo_pulse_to_duty(pulse_us)` | PWM duty cycle calculation from pulse width                           |
+| `actuators/servo.c`  | `clamp_pulse(pulse)`            | Pulse clamping to `[SERVO_PULSE_MIN_US, SERVO_PULSE_MAX_US]`          |
+| `vision/vision.cpp`  | `clamp_int(value, lo, hi)`      | Integer clamping utility                                              |
+| `vision/vision.cpp`  | `tensor_element_count(tensor)`  | Product of tensor dimensions                                          |
+| `vision/vision.cpp`  | Label-to-kind mapping           | `kLabelToKind[]` maps indices to correct `vision_kind_t` values       |
+| `app_main.c`         | `get_vision_kind_str(kind)`     | Enum → string mapping                                                 |
+| `app_main.c`         | Threat detection logic          | `is_threat` = (crow OR magpie OR squirrel) AND confidence ≥ threshold |
+| `sensors/max17048.c` | Voltage calculation             | `vraw >> 4` then `* 1.25f / 1000.0f` conversion                       |
+| `sensors/max17048.c` | SOC calculation                 | `buf[0] + buf[1] / 256.0f` conversion                                 |
+| `storage/fram.c`     | Address bounds checking         | Rejects `addr + len > FRAM_CAP_BYTES`                                 |
+
+### 1.2 Approach: Extract-and-Test
+
+Since these functions are currently `static` or interleaved with hardware code, the approach is:
+
+1. **Extract pure logic** into small, separate `.c/.h` files (e.g., `servo_math.h`, `vision_utils.h`, `threat_logic.h`)
+2. **Keep the originals calling the extracted functions** — no behavior change
+3. **Write host-compiled tests** that `#include` only the extracted headers — no ESP-IDF dependency
+
+### 1.3 Directory Structure
+
+```
+test/
+├── CMakeLists.txt              ← Host CMake build (NOT idf.py)
+├── unity/                      ← Unity test framework (git submodule or copy)
+│   ├── unity.c
+│   ├── unity.h
+│   └── unity_internals.h
+├── test_servo_math.c           ← Tests for servo pulse/duty calculations
+├── test_vision_utils.c         ← Tests for clamp, tensor_element_count, label mapping
+├── test_threat_logic.c         ← Tests for threat detection decision logic
+├── test_sensor_conversions.c   ← Tests for MAX17048 voltage/SOC math
+├── test_fram_bounds.c          ← Tests for FRAM address validation
+└── test_main.c                 ← Unity test runner (calls all test suites)
+```
+
+### 1.4 Extracted Logic Files
+
+```
+main/
+├── actuators/
+│   ├── servo_math.h            ← [NEW] servo_pulse_to_duty(), clamp_pulse()
+│   └── servo.c                 ← Calls servo_math.h functions
+├── vision/
+│   ├── vision_utils.h          ← [NEW] clamp_int(), tensor_element_count()
+│   └── vision.cpp              ← Calls vision_utils.h functions
+├── threat_logic.h              ← [NEW] is_threat(), get_vision_kind_str()
+├── app_main.c                  ← Calls threat_logic.h functions
+└── sensors/
+    └── max17048_math.h         ← [NEW] raw_to_voltage(), raw_to_soc()
+```
+
+### 1.5 How to Run
+
+```powershell
+cd test
+cmake -B build
+cmake --build build
+./build/test_runner        # Runs all Unity tests, prints PASS/FAIL
+```
+
+### 1.6 Example Test Cases
+
+```c
+// test_servo_math.c
+void test_clamp_pulse_within_range(void) {
+    TEST_ASSERT_EQUAL_UINT32(1500, clamp_pulse(1500));
+}
+void test_clamp_pulse_below_min(void) {
+    TEST_ASSERT_EQUAL_UINT32(SERVO_PULSE_MIN_US, clamp_pulse(100));
+}
+void test_clamp_pulse_above_max(void) {
+    TEST_ASSERT_EQUAL_UINT32(SERVO_PULSE_MAX_US, clamp_pulse(5000));
+}
+
+// test_threat_logic.c
+void test_crow_high_confidence_is_threat(void) {
+    TEST_ASSERT_TRUE(is_threat(VISION_RESULT_CROW, 0.95f, 0.80f));
+}
+void test_background_is_not_threat(void) {
+    TEST_ASSERT_FALSE(is_threat(VISION_RESULT_BACKGROUND, 0.95f, 0.80f));
+}
+void test_crow_low_confidence_is_not_threat(void) {
+    TEST_ASSERT_FALSE(is_threat(VISION_RESULT_CROW, 0.50f, 0.80f));
+}
+```
+
+---
+
+## 2. Python Model Validation Tests
+
+### 2.1 What to Test
+
+An existing `tools/test_tflite.py` script already runs inference on synthetic images (black, noise). This will be formalized into a proper pytest suite:
+
+| Test                            | Input                     | Expected Behavior                            |
+| ------------------------------- | ------------------------- | -------------------------------------------- |
+| Model loads                     | —                         | No crashes, correct schema version           |
+| Input shape                     | —                         | `[1, 96, 96, 3]`, dtype `int8`               |
+| Output shape                    | —                         | `[1, 4]`, dtype `int8`                       |
+| Black image                     | `(0,0,0)`                 | Should classify as `background` (class 3)    |
+| White image                     | `(255,255,255)`           | Should classify as `background` (class 3)    |
+| Random noise                    | Random uint8              | Output probabilities should sum to ~1.0      |
+| All classes have representation | 4 class outputs           | No class is permanently stuck at 0.0         |
+| Outputs are dynamic             | Multiple different inputs | Outputs differ between inputs (not constant) |
+
+### 2.2 Directory Structure
+
+```
+tools/
+├── test_model.py               ← [NEW] pytest-based model validation
+├── conftest.py                 ← [NEW] Shared fixtures (model path, interpreter)
+└── test_tflite.py              ← Existing ad-hoc script (kept as reference)
+```
+
+### 2.3 How to Run
+
+```powershell
+pip install pytest tensorflow numpy Pillow
+cd tools
+pytest test_model.py -v
+```
+
+---
+
+## 3. Implementation Phases
+
+### Phase 1: Python Model Tests (Quick Win)
+
+The easiest to implement since `tools/test_tflite.py` already has most of the logic. Just restructure it as a proper pytest suite.
+
+- [ ] Create `tools/test_model.py` with pytest test cases
+- [ ] Create `tools/conftest.py` with shared interpreter fixture
+- [ ] Verify all tests pass on current model
+
+### Phase 2: Host Unit Tests
+
+Requires extracting pure logic into headers first, then writing tests.
+
+- [ ] Add Unity framework to `test/unity/`
+- [ ] Create `test/CMakeLists.txt` for host-only builds
+- [ ] Extract `servo_math.h`, `vision_utils.h`, `threat_logic.h`, `max17048_math.h`
+- [ ] Update original files to call extracted functions
+- [ ] Write test files for each extracted module
+- [ ] Create `test/test_main.c` runner
+- [ ] Verify all tests pass
+
+### Phase 3: CI Integration (Future)
+
+- [ ] Add GitHub Actions workflow to run tests on push
+- [ ] Python tests: `pip install → pytest`
+- [ ] C tests: `cmake → build → run`

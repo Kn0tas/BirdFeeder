@@ -17,6 +17,8 @@
 
 static const char *TAG = "vision";
 
+#include "vision/vision_utils.h"
+
 namespace {
 constexpr size_t kTensorArenaSize = 2 * 1024 * 1024; // 2MB for PSRAM
 
@@ -45,14 +47,6 @@ int tensor_element_count(const TfLiteTensor *tensor) {
     count *= tensor->dims->data[i];
   }
   return count;
-}
-
-int clamp_int(int value, int lo, int hi) {
-  if (value < lo)
-    return lo;
-  if (value > hi)
-    return hi;
-  return value;
 }
 } // namespace
 
