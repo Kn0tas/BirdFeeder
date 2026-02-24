@@ -17,7 +17,7 @@
 
 static const char *TAG = "vision";
 
-#include "vision/vision_utils.h"
+#include "vision_utils.h"
 
 namespace {
 constexpr size_t kTensorArenaSize = 2 * 1024 * 1024; // 2MB for PSRAM
