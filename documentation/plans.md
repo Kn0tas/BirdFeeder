@@ -647,8 +647,183 @@ Requires extracting pure logic into headers first, then writing tests.
 - [ ] Create `test/test_main.c` runner
 - [ ] Verify all tests pass
 
-### Phase 3: CI Integration (Future)
+### Phase 3: CI Integration ✅
 
-- [ ] Add GitHub Actions workflow to run tests on push
-- [ ] Python tests: `pip install → pytest`
-- [ ] C tests: `cmake → build → run`
+- [x] Add GitHub Actions workflow to run tests on push and PR
+
+---
+
+# Plan 4: Extended CI Pipeline
+
+> **Status as of 2026-02-24:** Planning phase.
+
+## Overview
+
+The current CI runs unit tests and model validation. This plan adds **four more jobs** to catch issues earlier:
+
+| Job                   | Tool                                         | What It Catches                                                     | Run Time |
+| --------------------- | -------------------------------------------- | ------------------------------------------------------------------- | -------- |
+| **C static analysis** | [cppcheck](https://cppcheck.sourceforge.io/) | Null derefs, buffer overflows, unused functions, undefined behavior | ~10s     |
+| **Python linting**    | [Ruff](https://docs.astral.sh/ruff/)         | Bugs, imports, style issues in training/tool scripts                | ~2s      |
+| **ESP-IDF build**     | `espressif/idf` Docker image                 | Firmware actually compiles after refactoring                        | ~3 min   |
+| **Model size guard**  | Shell script                                 | `.tflite` model doesn't exceed the 2MB tensor arena budget          | ~1s      |
+
+---
+
+## 1. C Static Analysis (cppcheck)
+
+### What
+
+Run `cppcheck` on all firmware C/C++ source files. This catches real bugs that GCC misses:
+
+- Null pointer dereferences
+- Buffer overflows
+- Memory leaks (malloc without free)
+- Unused functions / dead code
+- Uninitialized variables
+
+### How
+
+```yaml
+cppcheck:
+  name: C Static Analysis
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+    - run: sudo apt-get install -y cppcheck
+    - name: Run cppcheck
+      run: |
+        cppcheck --enable=warning,performance,portability \
+                 --error-exitcode=1 \
+                 --suppress=missingIncludeSystem \
+                 --inline-suppr \
+                 -I main -I main/sensors -I main/actuators \
+                 -I main/vision -I main/comms -I main/storage \
+                 -I main/logging \
+                 main/
+```
+
+> [!NOTE]
+> `--suppress=missingIncludeSystem` is needed since ESP-IDF system headers (`esp_log.h`, `driver/gpio.h`, etc.) won't be present in CI. cppcheck still analyzes our code's logic.
+
+### Suppressions
+
+If cppcheck produces false positives on specific lines, suppress them inline:
+
+```c
+// cppcheck-suppress unusedFunction
+esp_err_t some_callback(void) { ... }
+```
+
+---
+
+## 2. Python Linting (Ruff)
+
+### What
+
+Lint all Python scripts in `tools/` with [Ruff](https://docs.astral.sh/ruff/) — an extremely fast Python linter that replaces flake8, isort, and pyflakes.
+
+### How
+
+```yaml
+python-lint:
+  name: Python Lint
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+    - run: pip install ruff
+    - name: Lint Python files
+      run: ruff check tools/
+```
+
+### Configuration
+
+Add a `[tool.ruff]` section in a `pyproject.toml` at the project root:
+
+```toml
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E501"]  # Allow long lines in data-heavy scripts
+```
+
+---
+
+## 3. ESP-IDF Build Verification
+
+### What
+
+Verify the firmware actually **compiles** against ESP-IDF. This is the most valuable check — it catches broken includes, missing source files in CMakeLists.txt, and type errors that host-GCC won't see.
+
+### How
+
+```yaml
+esp-idf-build:
+  name: ESP-IDF Build
+  runs-on: ubuntu-latest
+  container: espressif/idf:v5.4
+  steps:
+    - uses: actions/checkout@v4
+    - name: Build firmware
+      shell: bash
+      run: |
+        . $IDF_PATH/export.sh
+        idf.py set-target esp32s3
+        idf.py build
+```
+
+> [!IMPORTANT]
+> This uses the official `espressif/idf` Docker image, which is ~2GB but cached by GitHub Actions after the first run. Build time is ~3 minutes.
+
+### Wi-Fi Secrets Handling
+
+The build needs `main/wifi_secrets.h` which isn't committed. The workflow step should create a dummy one:
+
+```yaml
+- name: Create dummy wifi_secrets.h
+  run: cp main/wifi_secrets.example.h main/wifi_secrets.h
+```
+
+---
+
+## 4. Model Size Guard
+
+### What
+
+Fail the build if the `.tflite` model exceeds the tensor arena budget. The arena is 2MB (2,097,152 bytes), and the model should be well under that.
+
+### How
+
+```yaml
+model-size-check:
+  name: Model Size Guard
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+    - name: Check model size
+      run: |
+        MAX_BYTES=1500000  # 1.5MB — leaves headroom for arena overhead
+        SIZE=$(stat --printf="%s" main/vision/model_int8.tflite)
+        echo "Model size: $SIZE bytes (limit: $MAX_BYTES)"
+        if [ "$SIZE" -gt "$MAX_BYTES" ]; then
+          echo "::error::Model too large ($SIZE > $MAX_BYTES bytes)"
+          exit 1
+        fi
+```
+
+---
+
+## 5. Implementation Steps
+
+- [ ] Add `cppcheck` job to `.github/workflows/test.yml`
+- [ ] Add `ruff` lint job to `.github/workflows/test.yml`
+- [ ] Create `pyproject.toml` with ruff configuration
+- [ ] Add ESP-IDF build job (with dummy `wifi_secrets.h`)
+- [ ] Add model size guard job
+- [ ] Push and verify all jobs pass in CI

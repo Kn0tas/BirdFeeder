@@ -1,7 +1,8 @@
-import os
 import argparse
+import os
 import uuid
 from pathlib import Path
+
 
 def rename_dataset(directory, prefix):
     dir_path = Path(directory)
@@ -19,8 +20,9 @@ def rename_dataset(directory, prefix):
     temp_files = []
     for f in files:
         ext = f.suffix.lower()
-        if ext == '.jpeg': ext = '.jpg' # Normalize jpeg to jpg
-        
+        if ext == '.jpeg':
+            ext = '.jpg'  # Normalize jpeg to jpg
+
         tmp_name = dir_path / f"{uuid.uuid4()}{ext}"
         os.rename(f, tmp_name)
         temp_files.append(tmp_name)

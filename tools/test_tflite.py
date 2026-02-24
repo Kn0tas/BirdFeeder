@@ -1,7 +1,9 @@
-import tensorflow as tf
-import numpy as np
-from PIL import Image
 import argparse
+
+import numpy as np
+import tensorflow as tf
+from PIL import Image
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -17,11 +19,11 @@ def main():
 
     print("Input details:", input_details)
     print("Output details:", output_details)
-    
+
     # Check input expectations
     scale, zero_point = input_details[0]['quantization']
     print(f"Input Quantization: scale={scale}, zero_point={zero_point}")
-    
+
     # Create a BLACK image (0,0,0)
     # Simulate what happens if camera sees darkness
     img = Image.new("RGB", (96, 96), color=(0, 0, 0))
@@ -31,7 +33,7 @@ def main():
     # Quantize input
     # If the model expects quantized inputs, we need to convert [0..255] float to int8
     # q = (real / scale) + zero_point
-    
+
     input_tensor = input_data.astype(np.float32)
     input_tensor = (input_tensor / scale) + zero_point
     input_tensor = np.clip(input_tensor, -128, 127).astype(np.int8)
@@ -40,17 +42,17 @@ def main():
     interpreter.invoke()
 
     output_data = interpreter.get_tensor(output_details[0]['index'])
-    
+
     # Dequantize output
     out_scale, out_zero_point = output_details[0]['quantization']
     output_probs = (output_data.astype(np.float32) - out_zero_point) * out_scale
-    
+
     print("\nPrediction on BLACK image:")
     # print(f"Raw Output (int8): {output_data}")
     # print(f"Probabilities: {output_probs}")
-    
+
     classes = ["CROW", "MAGPIE", "SQUIRREL", "BACKGROUND"]
-    mapped = dict(zip(classes, output_probs[0]))
+    mapped = dict(zip(classes, output_probs[0], strict=False))
     for k, v in mapped.items():
         print(f"  {k}: {v:.4f}")
 
@@ -62,15 +64,15 @@ def main():
     # Note: scale/zero_point from input details
     input_tensor = (input_tensor / scale) + zero_point
     input_tensor = np.clip(input_tensor, -128, 127).astype(np.int8)
-    
+
     interpreter.set_tensor(input_details[0]['index'], input_tensor)
     interpreter.invoke()
     output_data = interpreter.get_tensor(output_details[0]['index'])
-    
+
     out_scale, out_zero_point = output_details[0]['quantization']
     output_probs = (output_data.astype(np.float32) - out_zero_point) * out_scale
-    
-    mapped = dict(zip(classes, output_probs[0]))
+
+    mapped = dict(zip(classes, output_probs[0], strict=False))
     for k, v in mapped.items():
         print(f"  {k}: {v:.4f}")
 

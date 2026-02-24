@@ -6,10 +6,11 @@ Updated with aggressive augmentation and 2-phase fine-tuning.
 
 import argparse
 from pathlib import Path
+
 import numpy as np
 import tensorflow as tf
 from PIL import Image
-import os
+
 
 def ensure_class_dirs(data_dir: Path, class_names):
     """Ensure each class dir exists; create a dummy image if missing."""
@@ -48,7 +49,7 @@ def get_datasets(data_dir: Path, class_names, img_size: int, batch: int, val_spl
         subset="validation",
         seed=seed,
     )
-    
+
     # Calculate class weights for the training set
     # Note: This is an approximation based on file counts
     class_counts = {}
@@ -58,9 +59,9 @@ def get_datasets(data_dir: Path, class_names, img_size: int, batch: int, val_spl
         count = len(list(path.glob('*')))
         class_counts[cls] = count
         total += count
-    
+
     print("Class distribution:", class_counts)
-    
+
     # Calculate weights: total / (num_classes * class_count)
     class_indices = {name: i for i, name in enumerate(class_names)}
     class_weights = {}
@@ -123,7 +124,7 @@ def build_model(img_size: int, num_classes: int):
     x = tf.keras.layers.Dropout(0.2)(x) # Add dropout
     x = tf.keras.layers.Dense(128, activation="relu")(x) # Increased dense layer size
     outputs = tf.keras.layers.Dense(num_classes, activation="softmax")(x)
-    
+
     model = tf.keras.Model(inputs, outputs)
     return model
 
@@ -140,7 +141,7 @@ def convert_to_int8(model, out_tflite: Path, rep_dataset):
     # bundled with ESP-IDF 5.x) have compatibility issues that cause constant output.
     # Per-tensor is simpler and reliably correct in TFLite Micro.
     converter._experimental_disable_per_channel = True
-    
+
     tflite_model = converter.convert()
     out_tflite.parent.mkdir(parents=True, exist_ok=True)
     out_tflite.write_bytes(tflite_model)
@@ -208,14 +209,14 @@ def main():
         loss="categorical_crossentropy",
         metrics=["accuracy"],
     )
-    
+
     callbacks = [
         tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True),
     ]
 
     model.fit(
-        train_ds, 
-        validation_data=val_ds, 
+        train_ds,
+        validation_data=val_ds,
         epochs=args.epochs,
         class_weight=class_weights,
         callbacks=callbacks
@@ -230,26 +231,26 @@ def main():
         if "mobilenet" in layer.name.lower():
             base_model = layer
             break
-            
+
     if base_model is None:
-        print("Could not find base model layer! keys:", [l.name for l in model.layers])
+        print("Could not find base model layer! keys:", [layer.name for layer in model.layers])
         return
 
     print(f"Fine-tuning base model layer: {base_model.name}")
     base_model.trainable = True
-    
+
     # Fine-tune from this layer onwards
     # Let's freeze the bottom N layers and unfreeze the top
     fine_tune_at = 100 # MobileNetV2 has ~155 layers. Unfreeze top ~50.
     for layer in base_model.layers[:fine_tune_at]:
         layer.trainable = False
-        
+
     model.compile(
         optimizer=tf.keras.optimizers.Adam(1e-5), # Lower learning rate
         loss="categorical_crossentropy",
         metrics=["accuracy"],
     )
-    
+
     model.fit(
         train_ds,
         validation_data=val_ds,

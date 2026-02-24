@@ -1,9 +1,9 @@
 """Shared pytest fixtures for BirdFeeder model validation tests."""
 import os
-import pytest
-import numpy as np
-import tensorflow as tf
 
+import numpy as np
+import pytest
+import tensorflow as tf
 
 MODEL_PATH = os.path.join(
     os.path.dirname(__file__), "..", "main", "vision", "model_int8.tflite"

@@ -51,3 +51,77 @@ jobs:
       - name: Run model tests
         working-directory: tools
         run: python -m pytest test_model.py -v
+
+  # ── C Static Analysis ─────────────────────────────────────────────
+  cppcheck:
+    name: C Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cppcheck
+        run: sudo apt-get update && sudo apt-get install -y cppcheck
+
+      - name: Run cppcheck
+        run: |
+          cppcheck --enable=warning,performance,portability \
+                   --error-exitcode=1 \
+                   --suppress=missingIncludeSystem \
+                   --suppress=missingInclude \
+                   --inline-suppr \
+                   -I main -I main/sensors -I main/actuators \
+                   -I main/vision -I main/comms -I main/storage \
+                   -I main/logging \
+                   main/
+
+  # ── Python Linting ─────────────────────────────────────────────────
+  python-lint:
+    name: Python Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Lint Python files
+        run: ruff check tools/
+
+  # ── ESP-IDF Build Verification ─────────────────────────────────────
+  esp-idf-build:
+    name: ESP-IDF Build
+    runs-on: ubuntu-latest
+    container: espressif/idf:v5.4
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create dummy wifi_secrets.h
+        run: cp main/wifi_secrets.example.h main/wifi_secrets.h
+
+      - name: Build firmware
+        shell: bash
+        run: |
+          . $IDF_PATH/export.sh
+          idf.py set-target esp32s3
+          idf.py build
+
+  # ── Model Size Guard ───────────────────────────────────────────────
+  model-size-check:
+    name: Model Size Guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check model size
+        run: |
+          MAX_BYTES=1500000
+          SIZE=$(stat --printf="%s" main/vision/model_int8.tflite)
+          echo "Model size: $SIZE bytes (limit: $MAX_BYTES)"
+          if [ "$SIZE" -gt "$MAX_BYTES" ]; then
+            echo "::error::Model too large ($SIZE > $MAX_BYTES bytes)"
+            exit 1
+          fi

@@ -1,5 +1,5 @@
-import tensorflow as tf
 import numpy as np
+import tensorflow as tf
 
 model_path = "main/vision/model_int8.tflite"
 interp = tf.lite.Interpreter(model_path=model_path)
@@ -19,7 +19,7 @@ def run(label, arr_uint8):
     interp.invoke()
     raw = interp.get_tensor(out["index"])
     probs = (raw.astype(np.float32) - outzp) * outs
-    row = ", ".join(f"{c}={v:.4f}" for c, v in zip(classes, probs[0]))
+    row = ", ".join(f"{c}={v:.4f}" for c, v in zip(classes, probs[0], strict=False))
     print(f"{label}: {row}")
 
 run("BLACK", np.zeros((1, 96, 96, 3), dtype=np.uint8))
