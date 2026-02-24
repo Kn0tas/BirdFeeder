@@ -9,7 +9,7 @@
 #include "esp_log.h"
 #include "img_converters.h"
 
-#include "vision/model_data.h"
+#include "model_data.h"
 
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
