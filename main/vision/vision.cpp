@@ -1,5 +1,6 @@
 #include "vision.h"
 
+#include <inttypes.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -59,8 +60,8 @@ esp_err_t vision_init(void) {
 
   s_model = tflite::GetModel(g_model_tflite);
   if (s_model->version() != TFLITE_SCHEMA_VERSION) {
-    ESP_LOGE(TAG, "model schema %d != supported %d", s_model->version(),
-             TFLITE_SCHEMA_VERSION);
+    ESP_LOGE(TAG, "model schema %" PRIu32 " != supported %" PRIu32,
+             s_model->version(), TFLITE_SCHEMA_VERSION);
     return ESP_ERR_INVALID_VERSION;
   }
 
