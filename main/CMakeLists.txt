@@ -5,7 +5,7 @@ idf_component_register(
         "app_main.c"
         "i2c_bus.c"
         "power_manager.c"
-        "max17048.c"
+        "sensors/max17048.c"
         "sensors/pir.c"
         "sensors/camera.c"
         "vision/vision.cpp"

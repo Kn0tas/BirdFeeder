@@ -261,7 +261,6 @@ esp_err_t vision_classify(const camera_frame_t *frame,
     const uint8_t *out = s_output->data.uint8;
     for (int i = 0; i < out_count; ++i) {
       float score = (float)((int)out[i] - out_zero) * out_scale;
-      ESP_LOGI(TAG, "  Class %d: %.4f", i, score);
       if (score > best_score) {
         best_score = score;
         best_idx = i;
