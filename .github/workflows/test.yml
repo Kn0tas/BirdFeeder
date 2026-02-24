@@ -1,0 +1,53 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, feat/**]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── C Host Unit Tests ──────────────────────────────────────────────
+  c-unit-tests:
+    name: C Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile tests
+        run: |
+          gcc -o test_runner \
+            -I test/unity \
+            -I main \
+            -I main/actuators \
+            -I main/sensors \
+            -I main/vision \
+            test/unity/unity.c \
+            test/test_main.c \
+            test/test_servo_math.c \
+            test/test_vision_utils.c \
+            test/test_threat_logic.c \
+            test/test_sensor_conversions.c \
+            test/test_fram_bounds.c \
+            -lm
+
+      - name: Run tests
+        run: ./test_runner
+
+  # ── Python Model Validation ────────────────────────────────────────
+  python-model-tests:
+    name: Python Model Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pytest tensorflow numpy Pillow
+
+      - name: Run model tests
+        working-directory: tools
+        run: python -m pytest test_model.py -v

@@ -3,8 +3,8 @@
 #include "driver/i2c_master.h"
 #include "esp_log.h"
 #include "i2c_bus.h"
+#include "max17048_math.h"
 #include <string.h>
-
 
 static const char *TAG = "max17048";
 static i2c_master_dev_handle_t s_max_handle = NULL;
@@ -77,16 +77,14 @@ esp_err_t max17048_read(max17048_reading_t *out) {
     ESP_LOGE(TAG, "vcell read failed: %s", esp_err_to_name(err));
     return err;
   }
-  uint16_t vraw = ((uint16_t)buf[0] << 8) | buf[1];
-  vraw >>= 4;
-  out->voltage_v = (float)vraw * 1.25f / 1000.0f;
+  out->voltage_v = max17048_raw_to_voltage(buf[0], buf[1]);
 
   err = max17048_read_reg(REG_SOC, buf, sizeof(buf));
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "soc read failed: %s", esp_err_to_name(err));
     return err;
   }
-  out->soc_percent = (float)buf[0] + ((float)buf[1] / 256.0f);
+  out->soc_percent = max17048_raw_to_soc(buf[0], buf[1]);
 
   return ESP_OK;
 }
