@@ -10,13 +10,14 @@
 #include "esp_psram.h"
 #include "i2c_bus.h"
 #include "logging/events.h"
-#include "max17048.h"
 #include "nvs_flash.h"
 #include "power_manager.h"
 #include "sensors/camera.h"
+#include "sensors/max17048.h"
 #include "sensors/pir.h"
 #include "storage/fram.h"
 #include "vision/vision.h"
+
 
 static const char *TAG = "app_main";
 
