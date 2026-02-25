@@ -39,7 +39,7 @@ See `main/board_config.h` for the definitive source.
     - The `-` pin connects to battery ground.
     - `VCC` connects to ESP32 `3.3V` (logic power).
     - `SDA`/`SCL` connect to ESP32 I2C pins.
-    - `ALT` connects to ESP32 **GPIO 10** (Alert/Interrupt).
+    - `ALT` connects to ESP32 **GPIO 5** (Alert/Interrupt).
   - **Charger Output**: Charger `OUT` pad -> ESP32-S3 `5V/VIN` pin; Charger `GND` pad -> ESP32-S3 `GND`. _(Do NOT connect to 3.3V pin)_.
 
 ## Project Status
@@ -64,6 +64,17 @@ See `main/board_config.h` for the definitive source.
     idf.py -p COMx flash monitor
     ```
     _(Replace COMx with your device port, e.g., COM5)_
+
+## Hardware Design (PCB)
+
+The custom PCB schematic is designed in **EasyEDA**. See [`hardware/README.md`](hardware/README.md) for the full build guide and [`hardware/BOM.csv`](hardware/BOM.csv) for the Bill of Materials.
+
+Key design choices:
+
+- ESP32-S3-WROOM-1 N8R8 soldered directly (no DevKit)
+- Native USB (no external UART bridge) via GPIO 19/20
+- bq24074 charger IC integrated on-board
+- OV2640 camera via 24-pin 0.5mm FPC ribbon cable
 
 ## Technical Notes
 

@@ -1,0 +1,41 @@
+Reference,Value,Package,Quantity,Description,Notes
+U1,bq24074,QFN-20,1,USB/Solar LiPo Charger IC,TI bq24074RGTR
+U2,AMS1117-3.3,SOT-223,1,3.3V LDO Regulator,Or AP2112K-3.3TRG1
+U3,ESP32-S3-WROOM-1-N8R8,Module,1,MCU 8MB Flash 8MB PSRAM,Espressif
+U4,MAX17048,TDFN-8,1,LiPo Fuel Gauge I2C,Maxim/Analog Devices
+U5,MB85RC256V,SOP-8,1,256Kbit FRAM I2C,Fujitsu
+J1,USB-C Receptacle,USB-C-16P,1,USB 2.0 Type-C,For programming + charging
+J2,JST-PH 2-Pin,S2B-PH-K-S,1,Solar Panel Connector,6V 2W panel
+J3,JST-PH 2-Pin,S2B-PH-K-S,1,LiPo Battery Connector,3.7V LiPo
+J4,FPC 24-Pin 0.5mm,FPC-24P-0.5mm,1,Camera Ribbon Cable,Bottom-contact
+J5,Pin Header 1x3,2.54mm,1,Servo Connector (SG90),Signal/VCC/GND
+J6,Pin Header 1x3,2.54mm,1,PIR Sensor Connector (AM312),VCC/OUT/GND
+D1,SS14,SMA,1,Schottky Diode 1A 40V,Solar backfeed protection
+LED1,Green LED,0805,1,Power Good Indicator,
+LED2,Red LED,0805,1,Charge Status Indicator,
+SW1,Tactile Switch,6x6mm,1,Reset (EN),
+SW2,Tactile Switch,6x6mm,1,Boot (GPIO 0),
+R_ISET,590Ω,0603,1,bq24074 Charge Current (1A),
+R_TS,100kΩ,0603,1,bq24074 Thermistor Substitute,
+R_CC1,5.1kΩ,0603,1,USB-C CC1 Pull-Down,
+R_CC2,5.1kΩ,0603,1,USB-C CC2 Pull-Down,
+R_EN,10kΩ,0603,1,EN Pull-Up,
+R_BOOT,10kΩ,0603,1,GPIO 0 Pull-Up,
+R_PG,1kΩ,0603,1,Power Good LED Resistor,
+R_CHG,1kΩ,0603,1,Charge LED Resistor,
+R1,4.7kΩ,0603,1,I2C SDA Pull-Up,
+R2,4.7kΩ,0603,1,I2C SCL Pull-Up,
+R_ALRT,10kΩ,0603,1,MAX17048 ALRT Pull-Up,Optional if shared with I2C
+R_TMR,10kΩ,0603,1,bq24074 Safety Timer,Or float to disable
+C_IN,10µF,0805,1,bq24074 IN Decoupling,Ceramic
+C_BAT,10µF,0805,1,bq24074 BAT Decoupling,Ceramic
+C_OUT,10µF,0805,1,bq24074 OUT Decoupling,Ceramic
+C_LDO_IN,10µF,0805,1,LDO Input Decoupling,Ceramic
+C_LDO_OUT1,10µF,0805,1,LDO Output Decoupling,Ceramic
+C_LDO_OUT2,100nF,0603,1,LDO Output HF Decoupling,Ceramic
+C_MCU1,10µF,0805,1,ESP32 VDD3P3 Decoupling,Ceramic
+C_MCU2,100nF,0603,1,ESP32 VDD3P3 HF Decoupling,Ceramic
+C_EN,100nF,0603,1,EN Debounce Cap,
+C_MAX,100nF,0603,1,MAX17048 VDD Decoupling,Ceramic
+C_FRAM,100nF,0603,1,FRAM VCC Decoupling,Ceramic
+C_CAM,100nF,0603,1,Camera VCC Bypass,Near FPC pin 1

@@ -144,6 +144,29 @@ The magpie misclassification is expected: the model was trained on real-world ph
 
 ---
 
+### Stage 6 — Custom PCB Schematic Design
+
+**Goal:** Replace the breadboard prototype with a purpose-built PCB that integrates all components.
+
+**Design tool:** EasyEDA
+
+**Key design decisions:**
+
+- ESP32-S3-WROOM-1 N8R8 soldered directly onto PCB (no DevKit carrier board)
+- Native USB Serial/JTAG (GPIO 19/20) — no external USB-UART bridge chip needed
+- bq24074 charger IC integrated on-board (replaces Adafruit breakout)
+- OV2640 camera via 24-pin 0.5mm FPC ribbon cable connector (copper traces, not pin headers)
+- 3.3V LDO (AMS1117-3.3) stepping from battery voltage to logic rail
+
+**New files:**
+
+- [`hardware/README.md`](../hardware/README.md) — Full EasyEDA build guide (4 schematic sheets, complete GPIO table, design checklist)
+- [`hardware/BOM.csv`](../hardware/BOM.csv) — Bill of Materials (~40 components)
+
+**Result:** Complete netlist documentation ready to be drawn in EasyEDA. PCB layout to follow after schematic review.
+
+---
+
 ## 🔜 Next Steps
 
 1. **Balance dataset** — squirrel (814) dominates; add more crow/magpie images or reduce squirrel count
