@@ -96,6 +96,28 @@ CONFIG_NN_ANSI_C=y   # Use pure C reference kernels — bypasses the buggy S3 as
 
 ---
 
+### Stage 5 — Hardware Power System Wiring
+
+**Problem:** The device needed to be disconnected from USB power and connected to its permanent off-grid solar and battery power system.
+
+**Hardware Utilized:**
+
+- **Charger:** Adafruit USB-C Lithium Ion/Polymer Charger (bq24074)
+- **Solar Panel:** 6V 2W Polycrystalline Solar Panel (136x110mm)
+- **Battery:** 3.7V LiPo Battery
+- **Fuel Gauge:** MAX17048 I2C Breakout
+
+**Wiring Implemented:**
+
+- _(Pending)_ Solar panel to be connected to `VBUS` and `GND` across the charger input (waiting for JST connectors).
+- LiPo battery plugged directly into the charger's `Lipo Bat` JST port.
+- Charger output `OUT` and `GND` routed directly to ESP32-S3 `5V` (VIN) and `GND`.
+- The MAX17048 Fuel Gauge `+` pin was wired directly to the LiPo battery positive wire to ensure the ESP32 can accurately measure the true battery voltage instead of the charger's 4.4V regulated load output.
+
+**Result:** ESP32-S3 successfully booted via battery power. Initial I2C serial logs confirmed the MAX17048 fuel gauge was communicating perfectly, reading a healthy 4.253V directly from the battery while the ESP32 was powered by the charger load pins.
+
+---
+
 ## 📊 Current Dataset State
 
 | Class      | Images    |

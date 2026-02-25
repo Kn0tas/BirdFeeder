@@ -3,6 +3,7 @@
 Battery-friendly, Wi-Fi-connected bird feeder with on-device vision to keep squirrels out.
 
 ## Hardware Requirements
+
 - **Board**: ESP32-S3 DevKit N8R8 (8MB Flash, 8MB Octal PSRAM)
   - **Required**: Flash >= 4MB, PSRAM >= 2MB (for TFLite arena)
 - **Camera**: OV2640 (on standard header/breakout)
@@ -10,10 +11,15 @@ Battery-friendly, Wi-Fi-connected bird feeder with on-device vision to keep squi
   - PIR Motion Sensor (AM312)
   - Fuel Gauge (MAX17048)
   - FRAM (MB85RC256V)
-- **Actuator**: Servo (SG90)
+- **Power / Solar**:
+  - Adafruit USB / DC / Solar Lithium Ion/Polymer charger (bq24074)
+  - 6V 2W Solar Panel (136x110mm)
+  - 3.7V LiPo Battery (with JST-PH 2.0 connector)
 
 ## Wiring / Pinout
+
 See `main/board_config.h` for the definitive source.
+
 - **Micro-Controller**: ESP32-S3
 - **I2C Bus (Port 0)**:
   - SDA: GPIO 8
@@ -25,8 +31,19 @@ See `main/board_config.h` for the definitive source.
   - Power/Reset: GPIO 4 (PWDN), GPIO 1 (RESET)
 - **PIR**: GPIO 16
 - **Servo**: GPIO 2
+- **Power & Solar Wiring (Adafruit USB-C bq24074)**:
+  - **Solar Panel (6V 2W)**: _(Pending JST connectors)_ Red wire -> Charger `VBUS` pin; Black wire -> Charger `GND` pin next to VBUS.
+  - **LiPo Battery (3.7V)**: Plugged into Charger `Lipo Bat` JST port.
+  - **Voltage Monitor (MAX17048)**:
+    - The `+` pin (battery voltage measurement) MUST connect directly to the LiPo battery's positive wire (or the `LIPO` pad on the charger).
+    - The `-` pin connects to battery ground.
+    - `VCC` connects to ESP32 `3.3V` (logic power).
+    - `SDA`/`SCL` connect to ESP32 I2C pins.
+    - `ALT` connects to ESP32 **GPIO 10** (Alert/Interrupt).
+  - **Charger Output**: Charger `OUT` pad -> ESP32-S3 `5V/VIN` pin; Charger `GND` pad -> ESP32-S3 `GND`. _(Do NOT connect to 3.3V pin)_.
 
 ## Project Status
+
 - **Vision**: Fully implemented using TFLite Micro.
   - Model: `main/vision/model_int8.tflite` (embedded)
   - Classes: Crow, Squirrel, Rat, Magpie, Bird, Other, Unknown.
@@ -35,6 +52,7 @@ See `main/board_config.h` for the definitive source.
 - **Power**: Deep sleep logic implemented (wakes on PIR).
 
 ## Build Instructions
+
 1.  **Install ESP-IDF** (v5.2 - v5.5 supported).
 2.  **Configuration**:
     - Project uses a custom partition table (`partitions.csv`) to fit the model.
@@ -45,13 +63,15 @@ See `main/board_config.h` for the definitive source.
     idf.py build
     idf.py -p COMx flash monitor
     ```
-    *(Replace COMx with your device port, e.g., COM5)*
+    _(Replace COMx with your device port, e.g., COM5)_
 
 ## Technical Notes
+
 - **I2C Driver**: The project uses the **ESP-IDF v5 NG I2C driver** (`driver/i2c_master.h`) for the sensor bus to avoid conflicts with the camera component (which also uses the new driver).
 - **Memory**: The TFLite tensor arena (2MB) is allocated in **PSRAM**. If PSRAM is not detected, the application will fail to initialize vision.
 - **Linkage**: The `model_data.h` includes C++ guards to ensure correct linking of the model symbols.
 
 ## Troubleshooting
+
 - **"AllocateTensors failed"**: Ensure your board has PSRAM and it is enabled in `sdkconfig` (check boot logs for `Found 8MB PSRAM`).
 - **"CONFLICT! driver_ng..."**: Ensure you have done a clean build if upgrading from an older version. The project code now strictly uses the new I2C driver.
