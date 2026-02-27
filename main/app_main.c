@@ -5,6 +5,7 @@
 
 #include "actuators/servo.h"
 #include "board_config.h"
+#include "comms/http_server.h"
 #include "comms/ota.h"
 #include "comms/wifi.h"
 #include "esp_psram.h"
@@ -13,11 +14,12 @@
 #include "nvs_flash.h"
 #include "power_manager.h"
 #include "sensors/camera.h"
+#include "sensors/camera_manager.h"
 #include "sensors/max17048.h"
 #include "sensors/pir.h"
 #include "storage/fram.h"
+#include "storage/snapshot_store.h"
 #include "vision/vision.h"
-
 
 static const char *TAG = "app_main";
 
@@ -48,6 +50,12 @@ static void handle_motion_event(void) {
       3; // Discard first N frames — gives DMA time to sync after idle
   TickType_t start = xTaskGetTickCount();
 
+  /* Acquire camera for detection (yields if stream is active) */
+  if (cam_mgr_acquire(CAM_MODE_VISION, 10000) != ESP_OK) {
+    ESP_LOGW(TAG, "could not acquire camera for detection");
+    return;
+  }
+
   while ((xTaskGetTickCount() - start) < detection_window) {
     camera_frame_t frame = {0};
     if (camera_capture(&frame) != ESP_OK) {
@@ -76,7 +84,6 @@ static void handle_motion_event(void) {
     }
     ESP_LOGI(TAG, "detected %s (conf=%.2f)", get_vision_kind_str(res.kind),
              res.confidence);
-    camera_frame_return(&frame);
 
     bool is_threat =
         (res.kind == VISION_RESULT_CROW || res.kind == VISION_RESULT_SQUIRREL ||
@@ -87,6 +94,30 @@ static void handle_motion_event(void) {
       consecutive_hits++;
       ESP_LOGI(TAG, "threat detected (%d/%d) kind=%d conf=%.2f",
                consecutive_hits, consecutive_needed, res.kind, res.confidence);
+
+      /* Save snapshot on first confirmed threat */
+      if (consecutive_hits == consecutive_needed) {
+        const char *species = "unknown";
+        switch (res.kind) {
+        case VISION_RESULT_CROW:
+          species = "crow";
+          break;
+        case VISION_RESULT_MAGPIE:
+          species = "magpie";
+          break;
+        case VISION_RESULT_SQUIRREL:
+          species = "squirrel";
+          break;
+        default:
+          break;
+        }
+        int snap_id =
+            snapshot_save(frame.data, frame.size, species, res.confidence);
+        if (snap_id >= 0) {
+          ESP_LOGI(TAG, "saved detection snapshot id=%d", snap_id);
+        }
+      }
+
       if (!lid_closed && consecutive_hits >= consecutive_needed) {
         if (servo_set_lid_closed(true) == ESP_OK) {
           lid_closed = true;
@@ -98,8 +129,11 @@ static void handle_motion_event(void) {
     } else {
       consecutive_hits = 0;
     }
+    camera_frame_return(&frame);
     vTaskDelay(pdMS_TO_TICKS(300));
   }
+
+  cam_mgr_release();
 
   if (lid_closed) {
     vTaskDelay(pdMS_TO_TICKS(5000));
@@ -140,9 +174,12 @@ void app_main(void) {
   ESP_ERROR_CHECK(pir_init());
   ESP_ERROR_CHECK(servo_init());
   ESP_ERROR_CHECK(camera_init());
+  ESP_ERROR_CHECK(cam_mgr_init());
   ESP_ERROR_CHECK(vision_init());
   ESP_ERROR_CHECK(wifi_init());
   ESP_ERROR_CHECK(ota_init());
+  ESP_ERROR_CHECK(snapshot_store_init());
+  ESP_ERROR_CHECK(http_server_start());
 
   max17048_reading_t fuel = {0};
   if (max17048_read(&fuel) == ESP_OK) {
