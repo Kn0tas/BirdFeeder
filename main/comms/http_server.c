@@ -19,6 +19,7 @@
 #include "esp_camera.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
+#include "esp_task_wdt.h"
 #include "esp_timer.h"
 #include "img_converters.h"
 #include "sensors/camera.h"
@@ -188,9 +189,15 @@ static esp_err_t stream_ai_handler(httpd_req_t *req) {
     }
     err_count = 0;
 
-    /* Run classification on the frame */
+    /* Run classification on the frame — this is CPU-heavy (seconds).
+     * Add the httpd task to the WDT, reset it around inference,
+     * and yield briefly to let IDLE run. */
+    esp_task_wdt_add(NULL);
     vision_result_t vr = {0};
     vision_classify(&frame, &vr);
+    esp_task_wdt_reset();
+    esp_task_wdt_delete(NULL);
+    vTaskDelay(1); /* yield to IDLE task */
 
     /* Decode JPEG → RGB */
     const int src_w = frame.width;

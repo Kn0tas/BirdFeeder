@@ -20,7 +20,8 @@ static bool s_streaming = false;
  * Switch the camera frame size via the OV2640 sensor controls.
  */
 static esp_err_t switch_framesize(cam_mode_t mode) {
-  framesize_t fs = (mode == CAM_MODE_STREAM) ? FRAMESIZE_VGA : FRAMESIZE_QQVGA;
+  /* QVGA (320x240) for streaming — VGA overflows DRAM frame buffers */
+  framesize_t fs = (mode == CAM_MODE_STREAM) ? FRAMESIZE_QVGA : FRAMESIZE_QQVGA;
 
   sensor_t *sensor = esp_camera_sensor_get();
   if (!sensor) {
@@ -41,7 +42,7 @@ static esp_err_t switch_framesize(cam_mode_t mode) {
 
   s_cur_mode = mode;
   ESP_LOGI(TAG, "switched to %s",
-           (mode == CAM_MODE_STREAM) ? "VGA (stream)" : "QQVGA (vision)");
+           (mode == CAM_MODE_STREAM) ? "QVGA (stream)" : "QQVGA (vision)");
   return ESP_OK;
 }
 
@@ -80,6 +81,11 @@ esp_err_t cam_mgr_acquire(cam_mode_t mode, uint32_t timeout_ms) {
 }
 
 void cam_mgr_release(void) {
+  /* If we were streaming, switch back to QQVGA so the smaller frames
+   * don't overflow the DRAM buffers while idle. */
+  if (s_streaming && s_cur_mode != CAM_MODE_VISION) {
+    switch_framesize(CAM_MODE_VISION);
+  }
   s_streaming = false;
   xSemaphoreGive(s_mutex);
 }
