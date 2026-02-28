@@ -14,7 +14,6 @@ import {
   Alert,
   Modal,
   RefreshControl,
-  SafeAreaView,
   Platform,
   StatusBar as RNStatusBar,
   Animated,
@@ -22,7 +21,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { WebView } from 'react-native-webview';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /* ── Settings persistence ─────────────────────────────────────────── */
 
