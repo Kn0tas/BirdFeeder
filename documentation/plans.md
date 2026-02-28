@@ -827,3 +827,278 @@ model-size-check:
 - [ ] Add ESP-IDF build job (with dummy `wifi_secrets.h`)
 - [ ] Add model size guard job
 - [ ] Push and verify all jobs pass in CI
+
+---
+
+# Plan 5: Live Feed App
+
+> **Status as of 2026-02-27:** Planning phase complete. Ready for implementation.
+
+## Goal
+
+Build a mobile app (React Native / Expo) that connects to the birdfeeder over LAN, shows a live camera feed with a toggle between "Live View" (VGA) and "AI View" (what the model sees at 96×96), displays detection events with snapshots, and sends push notifications on threat detection.
+
+---
+
+## Decisions
+
+| # | Question | Answer |
+|---|---|---|
+| 1 | Remote access | **LAN only** (home Wi-Fi) |
+| 2 | Stream resolution | **VGA (640×480)** for live view (~10-15 fps), **QQVGA (96×96)** for AI view |
+| 3 | Login | **No auth for now** (LAN is trusted). Design for easy addition later. |
+| 4 | App type | **React Native (Expo)** — single codebase, deployable to Play Store + App Store |
+| 5 | Power budget | **Stream on demand** — camera + stream only active while someone is watching |
+| 6 | Push notifications | **Yes**, with a **toggle button** to enable/disable. Notify on threat detection. |
+| 7 | Detection snapshots | **Yes** — save JPEG on detection, show in the app's event log |
+
+---
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                     📱 React Native App                      │
+│                                                              │
+│  ┌─────────────┐  ┌─────────────┐  ┌──────────────────────┐ │
+│  │  Live Feed   │  │   Events    │  │      Settings        │ │
+│  │  [VGA/AI]    │  │  + Photos   │  │  IP / Notifications  │ │
+│  └──────┬───── ┘  └──────┬──────┘  └──────────────────────┘ │
+│         │                │                                    │
+└─────────┼────────────────┼────────────────────────────────────┘
+          │ HTTP           │ HTTP            WebSocket
+          ▼                ▼                    ▼
+┌──────────────────────────────────────────────────────────────┐
+│               🐦 ESP32-S3 (Firmware)                         │
+│                                                              │
+│  HTTP Server (port 80):                                      │
+│    GET /stream?mode=live  → MJPEG VGA 640×480 (~10-15 fps)   │
+│    GET /stream?mode=ai    → MJPEG 96×96 (AI input view)      │
+│    GET /capture           → single JPEG snapshot              │
+│    GET /status            → JSON {battery, uptime, etc.}     │
+│    GET /events            → JSON [{id, species, conf, ts}]   │
+│    GET /events/<id>.jpg   → detection snapshot JPEG           │
+│    WS  /ws                → threat alerts in real time        │
+│                                                              │
+│  FreeRTOS Tasks:                                             │
+│    Task 1 (Detection) — PIR → low-res capture → classify     │
+│                          → save snapshot → notify via WS      │
+│    Task 2 (HTTP)      — serves all endpoints above           │
+│    Task 3 (Status)    — periodic battery/health polling      │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Dual-Stream Feature
+
+The app has a toggle button on the Live Feed screen that switches between two views:
+
+| Mode | Endpoint | Resolution | FPS | Purpose |
+|---|---|---|---|---|
+| **Live View** | `/stream?mode=live` | VGA 640×480 | ~10-15 | Watch the feeder in real time |
+| **AI View** | `/stream?mode=ai` | 96×96 | ~1 (limited by inference speed) | See exactly what the AI model sees — useful for debugging and as a cool feature |
+
+**How it works on the ESP32:**
+
+- **Live View:** Camera runs at VGA, frames are captured and streamed as MJPEG directly.
+- **AI View:** Camera runs at QQVGA (160×120), frame is decoded to RGB, center-cropped and resized to 96×96 (same pipeline as `vision_classify`), then re-encoded to JPEG and streamed. Each frame is also run through the classifier, and the result (species + confidence) is sent alongside as a JSON sidecar via a custom HTTP header (`X-Detection: {"species":"crow","confidence":0.92}`) so the app can display the classification in real time overlaid on the AI View.
+
+This gives you a debugging tool (see what the model is actually receiving) while also being an engaging feature for end users ("see through the AI's eyes").
+
+---
+
+## New/Modified Firmware Files
+
+### New Files
+
+#### `main/comms/http_server.c` + `http_server.h`
+
+HTTP server using ESP-IDF's built-in `esp_http_server` component. Registers all endpoints listed in the architecture diagram. The stream handler:
+
+1. Parses `?mode=live` or `?mode=ai` query parameter
+2. Acquires the camera via camera manager at the appropriate resolution
+3. Loops: capture frame → send as MJPEG multipart boundary → repeat
+4. On client disconnect: releases camera, exits loop
+
+The WebSocket handler (`/ws`):
+
+- Maintains a list of connected clients
+- When the detection task detects a threat, it calls `ws_broadcast_event(event_json)` which pushes a JSON message to all connected clients
+- Message format: `{"type": "threat", "species": "crow", "confidence": 0.92, "snapshot_id": 5, "timestamp": 1740646800}`
+
+#### `main/sensors/camera_manager.c` + `camera_manager.h`
+
+Arbitrates camera access between streaming and detection:
+
+- `cam_mgr_acquire(cam_mode_t mode)` — locks camera, sets resolution (VGA for live, QQVGA for AI/vision)
+- `cam_mgr_release()` — unlocks camera
+- Uses a FreeRTOS mutex; streaming gets priority while a client is connected
+- When AI View is active, the camera manager provides frames that have been through the same preprocessing pipeline as the vision task (center-crop + resize to 96×96)
+
+#### `main/storage/snapshot_store.c` + `snapshot_store.h`
+
+Ring-buffer snapshot storage on SPIFFS:
+
+- `snapshot_save(jpeg_data, size, detection_info)` → returns snapshot ID
+- `snapshot_get(id, out_buf, out_size)` → reads saved snapshot
+- `snapshot_list()` → returns metadata array for event log
+- Auto-deletes oldest when partition is full (~10-20 snapshots at VGA quality in 1MB)
+
+### Modified Files
+
+#### `main/app_main.c`
+
+Refactored from single blocking loop to multi-task:
+
+```
+Current:  while(true) { pir_wait → capture → classify → servo }
+
+New:      xTaskCreate(detection_task)   — PIR → acquire camera (QQVGA) → classify
+                                          → if threat: save snapshot + WS broadcast
+                                          → release camera
+          xTaskCreate(http_server_task) — starts esp_http_server, handles all endpoints
+          xTaskCreate(status_task)      — periodic battery reads, event logging
+```
+
+#### `main/sensors/camera.c`
+
+Add `camera_set_framesize(framesize_t size)` to switch resolution at runtime. The OV2640 supports hot-switching between frame sizes without reinitializing the entire camera driver.
+
+#### `main/CMakeLists.txt`
+
+Add new source files: `comms/http_server.c`, `sensors/camera_manager.c`, `storage/snapshot_store.c`.
+
+#### `partitions.csv`
+
+Add 1MB SPIFFS partition for snapshot storage:
+
+```
+# Name,      Type,  SubType,  Offset,     Size
+nvs,         data,  nvs,      0x9000,     24K,
+phy_init,    data,  phy,      0xf000,     4K,
+factory,     app,   factory,  0x10000,    0x300000,
+snapshots,   data,  spiffs,   0x310000,   0x100000,
+```
+
+> With 8MB flash, the remaining ~4.7MB after factory + snapshots is available for OTA or future expansion.
+
+---
+
+## React Native App
+
+### Tech Stack
+
+- **Framework:** React Native with Expo (managed workflow)
+- **Language:** TypeScript
+- **Navigation:** Expo Router (file-based routing)
+- **Notifications:** `expo-notifications` for local push notifications
+- **Stream display:** WebView with embedded `<img src="/stream?mode=live">` (simplest reliable MJPEG approach)
+- **State management:** React Context (simple enough for this app)
+
+### Screens
+
+#### 1. Live Feed (Home)
+
+- Full-screen MJPEG stream via WebView
+- **Toggle button:** "Live View" ↔ "AI View" — switches the stream URL between `/stream?mode=live` and `/stream?mode=ai`
+- Status bar overlay: battery %, Wi-Fi signal, last detection
+- When AI View is active, the current classification result (species + confidence) is displayed as an overlay on the stream, read from the `X-Detection` response header on each MJPEG frame
+
+#### 2. Events
+
+- Scrollable list of threat detections
+- Each entry: thumbnail (from `/events/<id>.jpg`), species name, confidence %, timestamp
+- Tap to view full-size snapshot
+- Pull-to-refresh to fetch latest from `/events`
+
+#### 3. Settings
+
+- **ESP32 IP address** — text input (auto-discovered via mDNS later)
+- **Notifications toggle** — enables/disables push alerts for threat detections
+- About / version info
+
+### App Foundation for Play Store / App Store
+
+The Expo framework provides:
+
+- `eas build` — builds native Android APK/AAB and iOS IPA
+- `eas submit` — submits to Play Store / App Store
+- `app.json` — app metadata (name, icon, splash screen, permissions)
+- Proper app icons and splash screens will be needed before store release
+
+> [!NOTE]
+> For the initial development phase, the app runs via Expo Go (scan QR code on phone). No Play Store submission until the feature set is stable.
+
+---
+
+## Implementation Order
+
+| Phase | Deliverable | Scope | Depends On |
+|---|---|---|---|
+| **Phase 1** | ESP32 HTTP server + dual MJPEG streaming (`/stream?mode=live\|ai`) + `/capture` + `/status` | ~400 lines C | — |
+| **Phase 2** | Snapshot store + `/events` API + detection snapshot saving | ~250 lines C | Phase 1 |
+| **Phase 3** | Firmware multi-task refactor + camera manager | ~300 lines C | Phase 1 |
+| **Phase 4** | React Native Expo app — Live Feed (with toggle) + Events + Settings | ~600 lines TS | Phase 1+3 |
+| **Phase 5** | WebSocket notifications (ESP32 → app) + notification toggle | ~200 lines C+TS | Phase 3+4 |
+| **Phase 6** | Event log with detection snapshots in the app | ~150 lines TS | Phase 2+4 |
+| **Phase 7** | Polish — error handling, mDNS discovery, Play Store prep | Variable | Phase 4-6 |
+
+---
+
+## Verification Plan
+
+### Phase 1 — Browser Testing (no app needed)
+
+1. Flash firmware, find ESP32 IP from serial logs
+2. `http://<ip>/stream?mode=live` in phone browser → VGA MJPEG stream
+3. `http://<ip>/stream?mode=ai` → 96×96 MJPEG stream (AI view)
+4. `http://<ip>/capture` → single JPEG snapshot
+5. `http://<ip>/status` → JSON with battery, uptime
+6. Close browser tab → ESP32 logs show "stream client disconnected", camera stops
+
+### Phase 2 — Snapshot Verification
+
+1. Trigger PIR → detection saves snapshot to SPIFFS
+2. `http://<ip>/events` → JSON array with detection entries
+3. `http://<ip>/events/<id>.jpg` → saved snapshot image
+4. Trigger 15+ detections → oldest snapshots auto-deleted
+
+### Phase 3 — Multi-task Coexistence
+
+1. Stream live in browser
+2. Trigger PIR → detection task waits for camera, then classifies
+3. Stream resumes after detection
+4. Serial logs show resolution switching (VGA ↔ QQVGA)
+
+### Phase 4 — Mobile App
+
+1. `npx expo start` → scan QR on phone
+2. Enter ESP32 IP in Settings
+3. Live Feed tab → stream appears, toggle switches between live/AI view
+4. Close app → ESP32 shows stream disconnected
+
+### Phase 5 — Notifications
+
+1. Enable notifications in Settings
+2. Trigger threat → phone notification appears
+3. Disable toggle → trigger threat → no notification
+
+### Phase 6 — Events in App
+
+1. Events tab shows list of detections with thumbnails
+2. Tap to view full snapshot
+3. Pull-to-refresh fetches latest
+
+---
+
+## Risks & Considerations
+
+| Risk | Mitigation |
+|---|---|
+| **Memory pressure** — 8MB PSRAM shared between TFLite (2MB) and streaming | Profile actual usage; VGA frames are ~30-50KB in JPEG |
+| **Battery drain** — streaming keeps Wi-Fi + camera on | Auto-stop stream after 30s timeout if client disconnects |
+| **Flash space** — 3MB factory partition + 1MB snapshots + model | 8MB flash has headroom; monitor during development |
+| **Camera contention** — vision and streaming both need camera | Mutex-based camera manager; detection task yields to active stream |
+| **MJPEG in React Native** — no native MJPEG component | WebView wrapper is reliable; upgrade to native module later if needed |
+| **AI View encoding** — re-encoding 96×96 RGB to JPEG on ESP32 | ESP-IDF has `esp_jpg_encode`; small image so very fast |
