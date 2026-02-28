@@ -11,6 +11,7 @@
 #include "esp_psram.h"
 #include "i2c_bus.h"
 #include "logging/events.h"
+#include "mdns.h"
 #include "nvs_flash.h"
 #include "power_manager.h"
 #include "sensors/camera.h"
@@ -20,6 +21,7 @@
 #include "storage/fram.h"
 #include "storage/snapshot_store.h"
 #include "vision/vision.h"
+
 
 static const char *TAG = "app_main";
 
@@ -179,6 +181,14 @@ void app_main(void) {
   ESP_ERROR_CHECK(cam_mgr_init());
   ESP_ERROR_CHECK(vision_init());
   ESP_ERROR_CHECK(wifi_init());
+
+  /* mDNS: makes device reachable at birdfeeder.local */
+  ESP_ERROR_CHECK(mdns_init());
+  mdns_hostname_set("birdfeeder");
+  mdns_instance_name_set("BirdFeeder Camera");
+  mdns_service_add("BirdFeeder HTTP", "_http", "_tcp", 80, NULL, 0);
+  ESP_LOGI(TAG, "mDNS started: birdfeeder.local");
+
   ESP_ERROR_CHECK(ota_init());
   ESP_ERROR_CHECK(snapshot_store_init());
   ESP_ERROR_CHECK(http_server_start());

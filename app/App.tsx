@@ -27,7 +27,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 /* ── Settings persistence ─────────────────────────────────────────── */
 
 const SETTINGS_KEY = 'birdfeeder_settings';
-const DEFAULT_IP = '192.168.0.21';
+const DEFAULT_IP = 'birdfeeder.local';
 
 function useSettings() {
   const [deviceIp, setDeviceIp] = useState(DEFAULT_IP);
