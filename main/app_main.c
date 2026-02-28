@@ -115,6 +115,8 @@ static void handle_motion_event(void) {
             snapshot_save(frame.data, frame.size, species, res.confidence);
         if (snap_id >= 0) {
           ESP_LOGI(TAG, "saved detection snapshot id=%d", snap_id);
+          /* Notify connected WebSocket clients */
+          http_server_notify_detection(species, res.confidence, snap_id);
         }
       }
 

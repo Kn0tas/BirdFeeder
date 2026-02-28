@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -17,10 +17,12 @@ import {
   SafeAreaView,
   Platform,
   StatusBar as RNStatusBar,
+  Animated,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { WebView } from 'react-native-webview';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /* ── Settings persistence ─────────────────────────────────────────── */
 
@@ -68,8 +70,115 @@ function useSettings() {
       save(deviceIp, v);
     },
     baseUrl: `http://${deviceIp}`,
+    wsUrl: `ws://${deviceIp}/ws`,
     loaded,
   };
+}
+
+/* ── WebSocket hook ───────────────────────────────────────────────── */
+
+interface WsDetection {
+  type: string;
+  species: string;
+  confidence: number;
+  snap_id: number;
+  timestamp: number;
+}
+
+function useWebSocket(
+  wsUrl: string,
+  onDetection: (d: WsDetection) => void
+) {
+  const [connected, setConnected] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const connect = useCallback(() => {
+    if (!wsUrl) return; // Don't connect with empty URL
+    if (wsRef.current) {
+      try { wsRef.current.close(); } catch {}
+    }
+
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      setConnected(true);
+      if (reconnectTimer.current) {
+        clearTimeout(reconnectTimer.current);
+        reconnectTimer.current = null;
+      }
+    };
+
+    ws.onmessage = (evt: MessageEvent) => {
+      try {
+        const data = JSON.parse(evt.data) as WsDetection;
+        if (data.type === 'detection') {
+          onDetection(data);
+        }
+      } catch {}
+    };
+
+    ws.onerror = () => {
+      setConnected(false);
+    };
+
+    ws.onclose = () => {
+      setConnected(false);
+      wsRef.current = null;
+      /* Auto-reconnect after 3 seconds */
+      reconnectTimer.current = setTimeout(connect, 3000);
+    };
+  }, [wsUrl, onDetection]);
+
+  useEffect(() => {
+    connect();
+    return () => {
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+      if (wsRef.current) {
+        try { wsRef.current.close(); } catch {}
+      }
+    };
+  }, [connect]);
+
+  return connected;
+}
+
+/* ── Toast notification ───────────────────────────────────────────── */
+
+function Toast({ message, visible }: { message: string; visible: boolean }) {
+  const slideAnim = useRef(new Animated.Value(-100)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.sequence([
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.delay(3000),
+        Animated.timing(slideAnim, {
+          toValue: -100,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [visible, message, slideAnim]);
+
+  if (!visible) return null;
+
+  return (
+    <Animated.View
+      style={[
+        styles.toast,
+        { transform: [{ translateY: slideAnim }] },
+      ]}
+    >
+      <Text style={styles.toastText}>{message}</Text>
+    </Animated.View>
+  );
 }
 
 /* ── Tab bar ──────────────────────────────────────────────────────── */
@@ -89,8 +198,9 @@ function TabBar({
   active: TabId;
   onSelect: (t: TabId) => void;
 }) {
+  const insets = useSafeAreaInsets();
   return (
-    <View style={styles.tabBar}>
+    <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, 6) }]}>
       {TABS.map((tab) => (
         <TouchableOpacity
           key={tab.id}
@@ -236,7 +346,7 @@ function timeAgo(ts: number): string {
   return new Date(ts * 1000).toLocaleDateString();
 }
 
-function EventsScreen({ baseUrl }: { baseUrl: string }) {
+function EventsScreen({ baseUrl, refreshTrigger }: { baseUrl: string; refreshTrigger: number }) {
   const [events, setEvents] = useState<DetectionEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -260,7 +370,7 @@ function EventsScreen({ baseUrl }: { baseUrl: string }) {
 
   useEffect(() => {
     fetchEvents();
-  }, [fetchEvents]);
+  }, [fetchEvents, refreshTrigger]);
 
   if (loading) {
     return (
@@ -372,12 +482,14 @@ function SettingsScreen({
   notificationsEnabled,
   setNotificationsEnabled,
   baseUrl,
+  wsConnected,
 }: {
   deviceIp: string;
   setDeviceIp: (ip: string) => void;
   notificationsEnabled: boolean;
   setNotificationsEnabled: (v: boolean) => void;
   baseUrl: string;
+  wsConnected: boolean;
 }) {
   const [ipInput, setIpInput] = useState(deviceIp);
   const [testing, setTesting] = useState(false);
@@ -499,6 +611,13 @@ function SettingsScreen({
           <Text style={styles.subText}>API</Text>
           <Text style={styles.label}>{baseUrl}</Text>
         </View>
+        <View style={[styles.row, { justifyContent: 'space-between', paddingVertical: 6 }]}>
+          <Text style={styles.subText}>WebSocket</Text>
+          <View style={[styles.row, { gap: 6 }]}>
+            <View style={[styles.dot, wsConnected ? styles.dotGreen : styles.dotRed]} />
+            <Text style={styles.label}>{wsConnected ? 'Connected' : 'Disconnected'}</Text>
+          </View>
+        </View>
       </View>
     </ScrollView>
   );
@@ -509,6 +628,25 @@ function SettingsScreen({
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>('live');
   const settings = useSettings();
+  const [toastMsg, setToastMsg] = useState('');
+  const [toastVisible, setToastVisible] = useState(false);
+  const [eventRefresh, setEventRefresh] = useState(0);
+
+  const handleDetection = useCallback((d: WsDetection) => {
+    const species = d.species.charAt(0).toUpperCase() + d.species.slice(1);
+    const conf = (d.confidence * 100).toFixed(0);
+    setToastMsg(`🚨 ${speciesEmoji[d.species] || '❓'} ${species} detected (${conf}%)`);
+    setToastVisible(true);
+    /* Trigger events refresh */
+    setEventRefresh((n) => n + 1);
+    /* Reset toast visibility after animation */
+    setTimeout(() => setToastVisible(false), 3600);
+  }, []);
+
+  const wsConnected = useWebSocket(
+    settings.loaded ? settings.wsUrl : '',
+    handleDetection
+  );
 
   if (!settings.loaded) {
     return (
@@ -520,14 +658,16 @@ export default function App() {
   }
 
   return (
+    <SafeAreaProvider>
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
+      <Toast message={toastMsg} visible={toastVisible} />
       <View style={{ flex: 1 }}>
         {activeTab === 'live' && (
           <LiveFeedScreen baseUrl={settings.baseUrl} />
         )}
         {activeTab === 'events' && (
-          <EventsScreen baseUrl={settings.baseUrl} />
+          <EventsScreen baseUrl={settings.baseUrl} refreshTrigger={eventRefresh} />
         )}
         {activeTab === 'settings' && (
           <SettingsScreen
@@ -536,11 +676,13 @@ export default function App() {
             notificationsEnabled={settings.notificationsEnabled}
             setNotificationsEnabled={settings.setNotificationsEnabled}
             baseUrl={settings.baseUrl}
+            wsConnected={wsConnected}
           />
         )}
       </View>
       <TabBar active={activeTab} onSelect={setActiveTab} />
     </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 
@@ -755,5 +897,23 @@ const styles = StyleSheet.create({
   btnText: {
     color: '#38bdf8',
     fontWeight: '600',
+  },
+  /* Toast */
+  toast: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    backgroundColor: '#dc2626',
+    paddingTop: Platform.OS === 'android' ? (RNStatusBar.currentHeight || 0) + 8 : 50,
+    paddingBottom: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  toastText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });

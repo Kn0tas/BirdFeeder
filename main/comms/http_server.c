@@ -30,6 +30,13 @@
 
 static const char *TAG = "httpd";
 
+/* ── WebSocket client tracking ───────────────────────────────────────── */
+
+#define WS_MAX_CLIENTS 4
+static int s_ws_fds[WS_MAX_CLIENTS];
+static int s_ws_count = 0;
+static httpd_handle_t s_server = NULL;
+
 /* ── stream constants ────────────────────────────────────────────────── */
 
 #define MJPEG_BOUNDARY "birdfeeder"
@@ -405,21 +412,105 @@ static esp_err_t event_image_handler(httpd_req_t *req) {
   return res;
 }
 
+/* ── WebSocket handler ────────────────────────────────────────────────── */
+
+static esp_err_t ws_handler(httpd_req_t *req) {
+  if (req->method == HTTP_GET) {
+    /* New WebSocket connection — store the fd */
+    int fd = httpd_req_to_sockfd(req);
+    if (s_ws_count < WS_MAX_CLIENTS) {
+      s_ws_fds[s_ws_count++] = fd;
+      ESP_LOGI(TAG, "ws: client connected (fd=%d, total=%d)", fd, s_ws_count);
+    } else {
+      ESP_LOGW(TAG, "ws: max clients reached, rejecting fd=%d", fd);
+    }
+    return ESP_OK;
+  }
+
+  /* Handle incoming frames (we only expect close/ping) */
+  httpd_ws_frame_t frame;
+  memset(&frame, 0, sizeof(frame));
+  frame.type = HTTPD_WS_TYPE_TEXT;
+
+  esp_err_t ret = httpd_ws_recv_frame(req, &frame, 0);
+  if (ret != ESP_OK) {
+    ESP_LOGW(TAG, "ws: recv failed: %s", esp_err_to_name(ret));
+    return ret;
+  }
+
+  /* Discard any incoming text — we are send-only */
+  if (frame.len > 0) {
+    uint8_t *buf = (uint8_t *)malloc(frame.len + 1);
+    if (buf) {
+      frame.payload = buf;
+      httpd_ws_recv_frame(req, &frame, frame.len);
+      free(buf);
+    }
+  }
+
+  return ESP_OK;
+}
+
+/* Remove a disconnected fd from the tracking list */
+static void ws_remove_fd(int fd) {
+  for (int i = 0; i < s_ws_count; i++) {
+    if (s_ws_fds[i] == fd) {
+      s_ws_fds[i] = s_ws_fds[--s_ws_count];
+      ESP_LOGI(TAG, "ws: client removed (fd=%d, remaining=%d)", fd, s_ws_count);
+      return;
+    }
+  }
+}
+
+void http_server_notify_detection(const char *species, float confidence,
+                                  int snap_id) {
+  if (s_ws_count == 0 || !s_server) {
+    return;
+  }
+
+  char json[192];
+  int len =
+      snprintf(json, sizeof(json),
+               "{\"type\":\"detection\",\"species\":\"%s\",\"confidence\":%.2f,"
+               "\"snap_id\":%d,\"timestamp\":%lld}",
+               species, confidence, snap_id,
+               (long long)(esp_timer_get_time() / 1000000));
+
+  httpd_ws_frame_t frame = {
+      .final = true,
+      .fragmented = false,
+      .type = HTTPD_WS_TYPE_TEXT,
+      .payload = (uint8_t *)json,
+      .len = (size_t)len,
+  };
+
+  /* Broadcast to all connected clients */
+  for (int i = s_ws_count - 1; i >= 0; i--) {
+    esp_err_t ret = httpd_ws_send_frame_async(s_server, s_ws_fds[i], &frame);
+    if (ret != ESP_OK) {
+      ESP_LOGW(TAG, "ws: send failed fd=%d, removing", s_ws_fds[i]);
+      ws_remove_fd(s_ws_fds[i]);
+    }
+  }
+
+  ESP_LOGI(TAG, "ws: broadcast detection to %d clients", s_ws_count);
+}
+
 /* ── server start ────────────────────────────────────────────────────── */
 
 esp_err_t http_server_start(void) {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.stack_size = 8192;
-  config.max_uri_handlers = 8;
+  config.max_uri_handlers = 10;
   /* Allow long-running stream requests */
   config.lru_purge_enable = true;
 
-  httpd_handle_t server = NULL;
-  esp_err_t err = httpd_start(&server, &config);
+  esp_err_t err = httpd_start(&s_server, &config);
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "httpd_start failed: %s", esp_err_to_name(err));
     return err;
   }
+  httpd_handle_t server = s_server;
 
   /* /stream */
   const httpd_uri_t uri_stream = {
@@ -466,6 +557,17 @@ esp_err_t http_server_start(void) {
   };
   httpd_register_uri_handler(server, &uri_event_img);
 
-  ESP_LOGI(TAG, "HTTP server started on port %d", config.server_port);
+  /* /ws — WebSocket for real-time detection alerts */
+  const httpd_uri_t uri_ws = {
+      .uri = "/ws",
+      .method = HTTP_GET,
+      .handler = ws_handler,
+      .user_ctx = NULL,
+      .is_websocket = true,
+  };
+  httpd_register_uri_handler(server, &uri_ws);
+
+  ESP_LOGI(TAG, "HTTP server started on port %d (WS enabled)",
+           config.server_port);
   return ESP_OK;
 }
