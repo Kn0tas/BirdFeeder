@@ -26,7 +26,7 @@ import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-
 /* ── Settings persistence ─────────────────────────────────────────── */
 
 const SETTINGS_KEY = 'birdfeeder_settings';
-const DEFAULT_IP = 'birdfeeder.local';
+const DEFAULT_IP = '192.168.0.21';
 
 function useSettings() {
   const [deviceIp, setDeviceIp] = useState(DEFAULT_IP);
@@ -229,23 +229,18 @@ function LiveFeedScreen({ baseUrl }: { baseUrl: string }) {
   const [mode, setMode] = useState<StreamMode>('live');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [streamKey, setStreamKey] = useState(0);
+  const [streamKey, setStreamKey] = useState(Date.now());
 
-  const streamUrl = `${baseUrl}/stream?mode=${mode}`;
+  const streamUrl = `${baseUrl}/stream?mode=${mode}&t=${streamKey}`;
   const { width } = Dimensions.get('window');
   const streamHeight = mode === 'live' ? (width * 3) / 4 : width;
 
   const toggleMode = () => {
     setMode((prev) => (prev === 'live' ? 'ai' : 'live'));
-    setStreamKey((k) => k + 1);
+    setStreamKey(Date.now());
     setLoading(true);
     setError(false);
   };
-
-  const mjpegHtml = `<!DOCTYPE html><html><head>
-    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-    <style>*{margin:0;padding:0}body{background:#0f172a;display:flex;align-items:center;justify-content:center;min-height:100vh}img{width:100%;height:auto}</style>
-    </head><body><img src="${streamUrl}" /></body></html>`;
 
   return (
     <View style={styles.screen}>
@@ -262,7 +257,7 @@ function LiveFeedScreen({ baseUrl }: { baseUrl: string }) {
             <TouchableOpacity
               style={styles.retryBtn}
               onPress={() => {
-                setStreamKey((k) => k + 1);
+                setStreamKey(Date.now());
                 setError(false);
                 setLoading(true);
               }}
@@ -274,10 +269,11 @@ function LiveFeedScreen({ baseUrl }: { baseUrl: string }) {
           <>
             <WebView
               key={streamKey}
-              source={{ html: mjpegHtml }}
-              style={{ flex: 1, backgroundColor: 'transparent' }}
+              source={{ html: `<html><body style="margin:0;background:#1e293b"><img src="${streamUrl}" style="width:100%;height:auto"/></body></html>` }}
+              style={{ flex: 1, backgroundColor: '#1e293b' }}
               scrollEnabled={false}
-              javaScriptEnabled
+              javaScriptEnabled={false}
+              mediaPlaybackRequiresUserAction={false}
               onLoadEnd={() => setLoading(false)}
               onError={() => setError(true)}
               onHttpError={() => setError(true)}
