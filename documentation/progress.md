@@ -167,6 +167,26 @@ The magpie misclassification is expected: the model was trained on real-world ph
 
 ---
 
+### Stage 7 — Live Video Stream Stabilization
+
+**Problem:** The React Native app's live feed component was unreliable and sometimes failed to load due to caching. The HTTP MJPEG stream was also sending frames too fast, causing `FB-OVF` errors on the ESP32 side during slower network connections.
+
+**App improvements (`app/App.tsx`):**
+
+- Changed default target IP from `birdfeeder.local` to a static IP (`192.168.0.21`).
+- Implemented robust cache-busting by appending a `Date.now()` timestamp to the stream URL on every retry/mode switch.
+- Simplified the `WebView` HTML wrapper and disabled unused functionality (`javaScriptEnabled=false`, `mediaPlaybackRequiresUserAction=false`).
+- Updated `react-native-webview` dependency.
+
+**Firmware improvements (`main/comms/http_server.c`, `main/sensors/camera.c`):**
+
+- Throttled the `stream_live_handler` with a 50ms delay (~20 FPS) to prevent the camera DMA ring buffer from overflowing (FB-OVF) when the network is struggling to keep up with the frame rate.
+- Tidied camera `fb_location` comments.
+
+**Result:** The live stream connects much more reliably and handles network delays gracefully without crashing the camera driver.
+
+---
+
 ## 🔜 Next Steps
 
 1. **Balance dataset** — squirrel (814) dominates; add more crow/magpie images or reduce squirrel count
