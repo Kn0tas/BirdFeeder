@@ -19,22 +19,22 @@ export default function LiveFeedScreen() {
   const [mode, setMode] = useState<StreamMode>('live');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [streamKey, setStreamKey] = useState(0);
+  const [streamKey, setStreamKey] = useState(Date.now());
 
   // Refresh stream when tab is focused
   useFocusEffect(
     useCallback(() => {
-      setStreamKey((k) => k + 1);
+      setStreamKey(Date.now());
       setLoading(true);
       setError(false);
     }, [])
   );
 
-  const streamUrl = `${baseUrl}/stream?mode=${mode}`;
+  const streamUrl = `${baseUrl}/stream?mode=${mode}&t=${streamKey}`;
 
   const toggleMode = () => {
     setMode((prev) => (prev === 'live' ? 'ai' : 'live'));
-    setStreamKey((k) => k + 1);
+    setStreamKey(Date.now());
     setLoading(true);
     setError(false);
   };
@@ -42,22 +42,7 @@ export default function LiveFeedScreen() {
   const { width } = Dimensions.get('window');
   const streamHeight = mode === 'live' ? (width * 480) / 640 : width;
 
-  const mjpegHtml = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-      <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #0f172a; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-        img { width: 100%; height: auto; display: block; }
-      </style>
-    </head>
-    <body>
-      <img src="${streamUrl}" onerror="document.title='ERROR'" onload="document.title='OK'" />
-    </body>
-    </html>
-  `;
+  const mjpegHtml = `<html><body style="margin:0;background:#1e293b"><img src="${streamUrl}" style="width:100%;height:auto"/></body></html>`;
 
   return (
     <View style={styles.container}>
@@ -73,7 +58,7 @@ export default function LiveFeedScreen() {
             <TouchableOpacity
               style={styles.retryButton}
               onPress={() => {
-                setStreamKey((k) => k + 1);
+                setStreamKey(Date.now());
                 setError(false);
                 setLoading(true);
               }}
@@ -86,9 +71,10 @@ export default function LiveFeedScreen() {
             <WebView
               key={streamKey}
               source={{ html: mjpegHtml }}
-              style={styles.webview}
+              style={[styles.webview, { backgroundColor: '#1e293b' }]}
               scrollEnabled={false}
-              javaScriptEnabled={true}
+              javaScriptEnabled={false}
+              mediaPlaybackRequiresUserAction={false}
               onLoadEnd={() => setLoading(false)}
               onError={() => setError(true)}
               onHttpError={() => setError(true)}

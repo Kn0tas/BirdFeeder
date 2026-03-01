@@ -20,27 +20,10 @@
 #include "sensors/pir.h"
 #include "storage/fram.h"
 #include "storage/snapshot_store.h"
+#include "threat_logic.h"
 #include "vision/vision.h"
 
-
 static const char *TAG = "app_main";
-
-static const char *get_vision_kind_str(vision_kind_t kind) {
-  switch (kind) {
-  case VISION_RESULT_CROW:
-    return "CROW";
-  case VISION_RESULT_SQUIRREL:
-    return "SQUIRREL";
-  case VISION_RESULT_MAGPIE:
-    return "MAGPIE";
-  case VISION_RESULT_BACKGROUND:
-    return "BACKGROUND";
-  case VISION_RESULT_UNKNOWN:
-  default:
-    return "UNKNOWN";
-  }
-}
-
 static void handle_motion_event(void) {
   events_log("motion detected");
   const TickType_t detection_window = pdMS_TO_TICKS(5000);
@@ -84,15 +67,14 @@ static void handle_motion_event(void) {
       vTaskDelay(pdMS_TO_TICKS(200));
       continue;
     }
-    ESP_LOGI(TAG, "detected %s (conf=%.2f)", get_vision_kind_str(res.kind),
+    ESP_LOGI(TAG, "detected %s (conf=%.2f)",
+             get_vision_kind_str((threat_vision_kind_t)res.kind),
              res.confidence);
 
-    bool is_threat =
-        (res.kind == VISION_RESULT_CROW || res.kind == VISION_RESULT_SQUIRREL ||
-         res.kind == VISION_RESULT_MAGPIE) &&
-        res.confidence >= threat_thresh;
+    bool threat = is_threat((threat_vision_kind_t)res.kind, res.confidence,
+                            threat_thresh);
 
-    if (is_threat) {
+    if (threat) {
       consecutive_hits++;
       ESP_LOGI(TAG, "threat detected (%d/%d) kind=%d conf=%.2f",
                consecutive_hits, consecutive_needed, res.kind, res.confidence);
