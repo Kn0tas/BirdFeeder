@@ -64,9 +64,8 @@ esp_err_t camera_init(void) {
       .frame_size = FRAMESIZE_QQVGA, // 160x120 — smallest, most reliable
       .jpeg_quality = 20, // quality 20 gives better images on OV2640 than 12
                           // (lower != better on this sensor)
-      .fb_count = 2,      // Double buffer — prevents DMA ring overflow (FB-OVF)
-      .fb_location = CAMERA_FB_IN_DRAM, // DRAM via AHB — fastest DMA path,
-                                        // avoids SPI-PSRAM bottleneck
+      .fb_count = 2,      // Double buffer in DRAM
+      .fb_location = CAMERA_FB_IN_DRAM, // DRAM via AHB — fastest DMA path
       .grab_mode = CAMERA_GRAB_LATEST,  // Always get newest frame
   };
 

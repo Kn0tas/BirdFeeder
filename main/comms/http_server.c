@@ -153,6 +153,9 @@ static esp_err_t stream_live_handler(httpd_req_t *req) {
       /* Client disconnected */
       break;
     }
+
+    /* Throttle to ~20 fps to prevent FB-OVF on slow connections */
+    vTaskDelay(pdMS_TO_TICKS(50));
   }
 
   ESP_LOGI(TAG, "stream live: client disconnected");

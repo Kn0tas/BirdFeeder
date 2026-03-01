@@ -1,0 +1,121 @@
+diff --git a/app/App.tsx b/app/App.tsx
+index 8c2382c..383a178 100644
+--- a/app/App.tsx
++++ b/app/App.tsx
+@@ -26,7 +26,7 @@ import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-
+ /* ── Settings persistence ─────────────────────────────────────────── */
+ 
+ const SETTINGS_KEY = 'birdfeeder_settings';
+-const DEFAULT_IP = 'birdfeeder.local';
++const DEFAULT_IP = '192.168.0.21';
+ 
+ function useSettings() {
+   const [deviceIp, setDeviceIp] = useState(DEFAULT_IP);
+@@ -229,24 +229,19 @@ function LiveFeedScreen({ baseUrl }: { baseUrl: string }) {
+   const [mode, setMode] = useState<StreamMode>('live');
+   const [loading, setLoading] = useState(true);
+   const [error, setError] = useState(false);
+-  const [streamKey, setStreamKey] = useState(0);
++  const [streamKey, setStreamKey] = useState(Date.now());
+ 
+-  const streamUrl = `${baseUrl}/stream?mode=${mode}`;
++  const streamUrl = `${baseUrl}/stream?mode=${mode}&t=${streamKey}`;
+   const { width } = Dimensions.get('window');
+   const streamHeight = mode === 'live' ? (width * 3) / 4 : width;
+ 
+   const toggleMode = () => {
+     setMode((prev) => (prev === 'live' ? 'ai' : 'live'));
+-    setStreamKey((k) => k + 1);
++    setStreamKey(Date.now());
+     setLoading(true);
+     setError(false);
+   };
+ 
+-  const mjpegHtml = `<!DOCTYPE html><html><head>
+-    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+-    <style>*{margin:0;padding:0}body{background:#0f172a;display:flex;align-items:center;justify-content:center;min-height:100vh}img{width:100%;height:auto}</style>
+-    </head><body><img src="${streamUrl}" /></body></html>`;
+-
+   return (
+     <View style={styles.screen}>
+       <Text style={styles.header}>BirdFeeder Live</Text>
+@@ -262,7 +257,7 @@ function LiveFeedScreen({ baseUrl }: { baseUrl: string }) {
+             <TouchableOpacity
+               style={styles.retryBtn}
+               onPress={() => {
+-                setStreamKey((k) => k + 1);
++                setStreamKey(Date.now());
+                 setError(false);
+                 setLoading(true);
+               }}
+@@ -274,10 +269,11 @@ function LiveFeedScreen({ baseUrl }: { baseUrl: string }) {
+           <>
+             <WebView
+               key={streamKey}
+-              source={{ html: mjpegHtml }}
+-              style={{ flex: 1, backgroundColor: 'transparent' }}
++              source={{ html: `<html><body style="margin:0;background:#1e293b"><img src="${streamUrl}" style="width:100%;height:auto"/></body></html>` }}
++              style={{ flex: 1, backgroundColor: '#1e293b' }}
+               scrollEnabled={false}
+-              javaScriptEnabled
++              javaScriptEnabled={false}
++              mediaPlaybackRequiresUserAction={false}
+               onLoadEnd={() => setLoading(false)}
+               onError={() => setError(true)}
+               onHttpError={() => setError(true)}
+diff --git a/app/package-lock.json b/app/package-lock.json
+index 8c027b8..972f466 100644
+--- a/app/package-lock.json
++++ b/app/package-lock.json
+@@ -14,7 +14,7 @@
+         "react": "19.1.0",
+         "react-native": "0.81.5",
+         "react-native-safe-area-context": "^5.7.0",
+-        "react-native-webview": "13.15.0"
++        "react-native-webview": "^13.15.0"
+       },
+       "devDependencies": {
+         "@types/react": "19.1.10",
+diff --git a/app/package.json b/app/package.json
+index ef26ee6..390c272 100644
+--- a/app/package.json
++++ b/app/package.json
+@@ -15,7 +15,7 @@
+     "react": "19.1.0",
+     "react-native": "0.81.5",
+     "react-native-safe-area-context": "^5.7.0",
+-    "react-native-webview": "13.15.0"
++    "react-native-webview": "^13.15.0"
+   },
+   "devDependencies": {
+     "@types/react": "19.1.10",
+diff --git a/main/comms/http_server.c b/main/comms/http_server.c
+index 558acee..b9e3958 100644
+--- a/main/comms/http_server.c
++++ b/main/comms/http_server.c
+@@ -153,6 +153,9 @@ static esp_err_t stream_live_handler(httpd_req_t *req) {
+       /* Client disconnected */
+       break;
+     }
++
++    /* Throttle to ~20 fps to prevent FB-OVF on slow connections */
++    vTaskDelay(pdMS_TO_TICKS(50));
+   }
+ 
+   ESP_LOGI(TAG, "stream live: client disconnected");
+diff --git a/main/sensors/camera.c b/main/sensors/camera.c
+index c827c9f..04c6b9a 100644
+--- a/main/sensors/camera.c
++++ b/main/sensors/camera.c
+@@ -64,9 +64,8 @@ esp_err_t camera_init(void) {
+       .frame_size = FRAMESIZE_QQVGA, // 160x120 — smallest, most reliable
+       .jpeg_quality = 20, // quality 20 gives better images on OV2640 than 12
+                           // (lower != better on this sensor)
+-      .fb_count = 2,      // Double buffer — prevents DMA ring overflow (FB-OVF)
+-      .fb_location = CAMERA_FB_IN_DRAM, // DRAM via AHB — fastest DMA path,
+-                                        // avoids SPI-PSRAM bottleneck
++      .fb_count = 2,      // Double buffer in DRAM
++      .fb_location = CAMERA_FB_IN_DRAM, // DRAM via AHB — fastest DMA path
+       .grab_mode = CAMERA_GRAB_LATEST,  // Always get newest frame
+   };
+ 
