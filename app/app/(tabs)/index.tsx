@@ -43,34 +43,29 @@ export default function LiveFeedScreen() {
   const streamHeight = mode === 'live' ? (width * 480) / 640 : width;
 
   const [currentFrameUrl, setCurrentFrameUrl] = useState<string | null>(null);
+  const [nextFrameUrl, setNextFrameUrl] = useState<string | null>(null);
   const mounted = useRef(true);
+  const consecutiveErrors = useRef(0);
+  const timeoutId = useRef<NodeJS.Timeout | null>(null);
 
-  // Restart the loop when dependencies change
+  const loadNextFrame = useCallback(() => {
+    if (!mounted.current) return;
+    if (timeoutId.current) clearTimeout(timeoutId.current);
+    
+    timeoutId.current = setTimeout(() => {
+      if (!mounted.current) return;
+      setNextFrameUrl(`${baseUrl}/capture?mode=${mode}&t=${Date.now()}`);
+    }, 50); // Small 50ms delay
+  }, [baseUrl, mode]);
+
+  // Kick off the fetch loop
   useEffect(() => {
     mounted.current = true;
-    let timeoutId: NodeJS.Timeout;
-
-    const fetchNextFrame = async () => {
-      if (!mounted.current) return;
-      try {
-        timeoutId = setTimeout(() => {
-          if (!mounted.current) return;
-          // Set query parameter so that it continually reloads
-          setCurrentFrameUrl(`${baseUrl}/capture?mode=${mode}&t=${Date.now()}`);
-          fetchNextFrame();
-        }, 100);
-      } catch (err) {
-        console.warn('Fetch error:', err);
-        setError(true);
-        timeoutId = setTimeout(fetchNextFrame, 1000);
-      }
-    };
-
-    fetchNextFrame();
+    setCurrentFrameUrl(`${baseUrl}/capture?mode=${mode}&t=${Date.now()}`);
 
     return () => {
       mounted.current = false;
-      clearTimeout(timeoutId);
+      if (timeoutId.current) clearTimeout(timeoutId.current);
     };
   }, [baseUrl, mode, streamKey]);
 
@@ -99,13 +94,36 @@ export default function LiveFeedScreen() {
         ) : (
           <>
             <Image
-              key={streamKey}
+              key={`visible-${streamKey}`}
               source={currentFrameUrl ? { uri: currentFrameUrl } : undefined}
               style={[styles.webview, { backgroundColor: '#1e293b' }]}
               resizeMode="contain"
-              onLoadEnd={() => setLoading(false)}
-              onError={() => setError(true)}
+              onLoadEnd={() => {
+                setLoading(false);
+                consecutiveErrors.current = 0;
+                if (error) setError(false);
+                loadNextFrame();
+              }}
+              onError={() => {
+                consecutiveErrors.current += 1;
+                if (consecutiveErrors.current >= 3 && !error) setError(true);
+                loadNextFrame();
+              }}
             />
+            {/* Hidden image to pre-fetch the next frame silently to avoid staggering/flicker */}
+            {nextFrameUrl && (
+              <Image
+                key={`hidden-${streamKey}`}
+                source={{ uri: nextFrameUrl }}
+                style={{ width: 1, height: 1, opacity: 0, position: 'absolute' }}
+                onLoadEnd={() => {
+                  if (mounted.current) {
+                    setCurrentFrameUrl(nextFrameUrl);
+                    setNextFrameUrl(null);
+                  }
+                }}
+              />
+            )}
             {loading && (
               <View style={styles.loadingOverlay}>
                 <ActivityIndicator size="large" color="#38bdf8" />
