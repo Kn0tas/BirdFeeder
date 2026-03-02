@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,8 +6,8 @@ import {
   StyleSheet,
   ActivityIndicator,
   Dimensions,
+  Image,
 } from 'react-native';
-import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { useSettings } from '../../src/context/SettingsContext';
@@ -42,7 +42,37 @@ export default function LiveFeedScreen() {
   const { width } = Dimensions.get('window');
   const streamHeight = mode === 'live' ? (width * 480) / 640 : width;
 
-  const mjpegHtml = `<html><body style="margin:0;background:#1e293b"><img src="${streamUrl}" style="width:100%;height:auto"/></body></html>`;
+  const [currentFrameUrl, setCurrentFrameUrl] = useState<string | null>(null);
+  const mounted = useRef(true);
+
+  // Restart the loop when dependencies change
+  useEffect(() => {
+    mounted.current = true;
+    let timeoutId: NodeJS.Timeout;
+
+    const fetchNextFrame = async () => {
+      if (!mounted.current) return;
+      try {
+        timeoutId = setTimeout(() => {
+          if (!mounted.current) return;
+          // Set query parameter so that it continually reloads
+          setCurrentFrameUrl(`${baseUrl}/capture?mode=${mode}&t=${Date.now()}`);
+          fetchNextFrame();
+        }, 100);
+      } catch (err) {
+        console.warn('Fetch error:', err);
+        setError(true);
+        timeoutId = setTimeout(fetchNextFrame, 1000);
+      }
+    };
+
+    fetchNextFrame();
+
+    return () => {
+      mounted.current = false;
+      clearTimeout(timeoutId);
+    };
+  }, [baseUrl, mode, streamKey]);
 
   return (
     <View style={styles.container}>
@@ -68,16 +98,13 @@ export default function LiveFeedScreen() {
           </View>
         ) : (
           <>
-            <WebView
+            <Image
               key={streamKey}
-              source={{ html: mjpegHtml }}
+              source={currentFrameUrl ? { uri: currentFrameUrl } : undefined}
               style={[styles.webview, { backgroundColor: '#1e293b' }]}
-              scrollEnabled={false}
-              javaScriptEnabled={false}
-              mediaPlaybackRequiresUserAction={false}
+              resizeMode="contain"
               onLoadEnd={() => setLoading(false)}
               onError={() => setError(true)}
-              onHttpError={() => setError(true)}
             />
             {loading && (
               <View style={styles.loadingOverlay}>
